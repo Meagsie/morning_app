@@ -130,6 +130,11 @@
   .mantra{font-family:'Fraunces',serif;font-style:italic;font-size:20px;line-height:1.35;color:var(--moss);text-align:center;margin:2px 0 24px;}
   .mantra.small{font-size:16px;margin:22px 0 8px;}
 
+  .wknav{display:flex;align-items:center;justify-content:center;gap:12px;margin:0 0 14px;}
+  .wknav .wkbtn{width:30px;height:30px;border-radius:50%;border:1px solid var(--line);background:var(--paper);color:var(--moss);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding-bottom:2px;}
+  .wknav .wkbtn:disabled{opacity:.25;cursor:default;}
+  .wknav .wklabel{font-size:11.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--sage);font-weight:600;min-width:128px;text-align:center;}
+
   .grid-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -2px;}
   table.grid{width:100%;border-collapse:collapse;min-width:308px;}
   table.grid th{font-size:11px;color:var(--sage);font-weight:600;padding:0 0 8px;text-align:center;}
@@ -219,10 +224,15 @@
     <div id="rhythmView" class="hidden">
       <p class="mantra">Small steps, steady rhythm, lasting strength.</p>
 
+      <div class="wknav">
+        <button class="wkbtn" onclick="shiftWeek(-1)" aria-label="Earlier week">&lsaquo;</button>
+        <span class="wklabel" id="wkLabel">This week</span>
+        <button class="wkbtn" id="wkNext" onclick="shiftWeek(1)" aria-label="Later week" disabled>&rsaquo;</button>
+      </div>
       <div class="grid-scroll"><table class="grid" id="grid"></table></div>
-      <p class="grid-note">Tap what you tended. Empty is rest, not a miss.</p>
+      <p class="grid-note" id="gridNote">Tap what you tended. Empty is rest, not a miss.</p>
 
-      <div class="t-label">This week</div>
+      <div class="t-label" id="coreLabel">This week</div>
       <div class="core" id="coreHabits"></div>
 
       <div class="t-label" style="margin-top:28px;">Today's flow</div>
@@ -339,11 +349,26 @@ const MONTHLY = [
 ];
 const VALUES = ['Growth & Learning','Integrity','Curiosity','Independence','Creativity','Beauty'];
 
+/* Morning actions that also water the weekly grid — matched on the label,
+   so custom actions like "Yoga by the window" link up too. */
+const HABIT_LINKS = [
+  {re:/swim/i,                              habit:'swim'},
+  {re:/gym|strength|weights|leg press/i,    habit:'strength'},
+  {re:/stretch|yoga|mobility/i,             habit:'stretch'},
+  {re:/\bread/i,                            habit:'read'},
+  {re:/journal|reflect|gratitude/i,         habit:'reflection'}
+];
+function linkedHabit(item){
+  const l = HABIT_LINKS.find(x=>x.re.test(item.label||''));
+  return l ? l.habit : null;
+}
+
 let sequence = [];
 let doneIds = [];
 let todayPlan = null;
 let editMode = false;
 let tracking = {};
+let weekOffset = 0;   // 0 = this week, -1 = last week, ...
 
 function todayStr(){
   const d = new Date();
@@ -457,6 +482,23 @@ function toggleItem(id){
   sSet('dayState', {date:todayStr(), doneIds});
   renderList();
   renderSprig();
+
+  // a linked morning action also waters today's cell in the weekly grid
+  const it = sequence.find(x=>x.id===id);
+  const habit = it ? linkedHabit(it) : null;
+  if(habit){
+    const today = todayStr();
+    if(doneIds.includes(id)){
+      if(!tracking[today]) tracking[today] = {};
+      tracking[today][habit] = true;
+    } else if(tracking[today]){
+      delete tracking[today][habit];
+      if(Object.keys(tracking[today]).length===0) delete tracking[today];
+    }
+    sSet('tracking', tracking);
+    renderGrid();
+    renderCore();
+  }
 }
 
 /* ---- growing sprig ---- */
@@ -533,17 +575,36 @@ function persistSeq(){ sSet('sequence', sequence); }
 
 /* ---- weekly rhythm tracking ---- */
 function dateKey(d){ return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate(); }
-function weekDates(){
+function weekDates(offset){
+  if(offset===undefined) offset = weekOffset;
   const d = new Date();
   const day = (d.getDay()+6)%7;        // Monday = 0
-  const mon = new Date(d); mon.setDate(d.getDate()-day); mon.setHours(0,0,0,0);
+  const mon = new Date(d); mon.setDate(d.getDate()-day+offset*7); mon.setHours(0,0,0,0);
   const out = [];
   for(let i=0;i<7;i++){ const x=new Date(mon); x.setDate(mon.getDate()+i); out.push(dateKey(x)); }
   return out;
 }
+function shiftWeek(dir){
+  weekOffset = Math.min(0, weekOffset+dir);
+  renderGrid();
+  renderCore();
+}
+function weekLabel(){
+  if(weekOffset===0) return 'This week';
+  if(weekOffset===-1) return 'Last week';
+  const dates = weekDates();
+  const toD = s=>{ const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); };
+  const f = x=>x.toLocaleDateString('en-AU',{day:'numeric',month:'short'});
+  return f(toD(dates[0]))+' – '+f(toD(dates[6]));
+}
 function renderGrid(){
   const dates = weekDates();
   const today = todayStr();
+  document.getElementById('wkLabel').textContent = weekLabel();
+  document.getElementById('wkNext').disabled = weekOffset===0;
+  document.getElementById('gridNote').textContent = weekOffset===0
+    ? 'Tap what you tended. Empty is rest, not a miss.'
+    : 'A look back, kindly. You can still fill a forgotten day.';
   const letters = ['M','T','W','T','F','S','S'];
   let h = '<thead><tr><th class="hlabel"></th>';
   dates.forEach((d,i)=>{ h += `<th class="${d===today?'col-today':''}">${letters[i]}</th>`; });
@@ -573,6 +634,8 @@ function toggleCell(habitId, d){
 }
 function renderCore(){
   const dates = weekDates();
+  const past = weekOffset < 0;
+  document.getElementById('coreLabel').textContent = weekLabel();
   document.getElementById('coreHabits').innerHTML = CORE.map(c=>{
     const count = dates.reduce((n,d)=> n + (tracking[d] && tracking[d][c.id] ? 1 : 0), 0);
     const reached = c.target ? count >= (c.min || c.target) : count > 0;
@@ -580,8 +643,8 @@ function renderCore(){
     if(c.target){ for(let i=0;i<c.target;i++) pips += `<span class="pip ${i<count?'on':''}"></span>`; }
     let cnt;
     if(reached) cnt = '🌿';
-    else if(count===0) cnt = 'anytime';
-    else cnt = `${count} so far`;
+    else if(count===0) cnt = past ? 'rested' : 'anytime';
+    else cnt = past ? `${count}` : `${count} so far`;
     return `<div class="core-row ${reached?'reached':''}">
       <span class="cl">${escapeHtml(c.label)}</span>
       <span class="pips">${pips}</span>
