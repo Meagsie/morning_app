@@ -55,7 +55,7 @@
 
   /* segmented */
   .seg{display:flex;background:var(--soft);border-radius:100px;padding:4px;margin:30px 0 24px;}
-  .seg button{flex:1;border:none;background:none;font-family:'Inter';font-size:14px;font-weight:500;color:var(--moss);padding:9px 0;border-radius:100px;cursor:pointer;transition:all .25s;}
+  .seg button{flex:1;border:none;background:none;font-family:'Inter';font-size:14px;font-weight:500;color:var(--moss);padding:9px 0;border-radius:100px;cursor:pointer;transition:all .25s;white-space:nowrap;}
   .seg button.on{background:var(--paper);color:var(--canopy);box-shadow:0 1px 3px rgba(35,54,42,.10);font-weight:600;}
 
   /* sprig */
@@ -126,6 +126,53 @@
   .saved-note{text-align:center;font-size:13.5px;color:var(--leaf);margin-top:14px;opacity:0;transition:opacity .3s;}
   .saved-note.on{opacity:1;}
 
+  /* ---- rhythm / weekly tracking ---- */
+  .mantra{font-family:'Fraunces',serif;font-style:italic;font-size:20px;line-height:1.35;color:var(--moss);text-align:center;margin:2px 0 24px;}
+  .mantra.small{font-size:16px;margin:22px 0 8px;}
+
+  .grid-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -2px;}
+  table.grid{width:100%;border-collapse:collapse;min-width:308px;}
+  table.grid th{font-size:11px;color:var(--sage);font-weight:600;padding:0 0 8px;text-align:center;}
+  table.grid th.hlabel{text-align:left;}
+  table.grid td{padding:0;text-align:center;}
+  table.grid td.hlabel{font-size:12px;color:var(--bark);text-align:left;padding:0 8px 0 2px;white-space:nowrap;}
+  table.grid tbody td{border-top:1px solid var(--soft);}
+  table.grid td.col-today,table.grid th.col-today{background:rgba(94,120,87,.08);}
+  .cell{height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  .cell .dot{width:17px;height:17px;border-radius:50%;border:1.8px solid var(--sage);opacity:.55;transition:all .25s cubic-bezier(.34,1.56,.64,1);}
+  .cell:active .dot{transform:scale(.85);}
+  .cell.on .dot{background:var(--leaf);border-color:var(--leaf);opacity:1;transform:scale(1);}
+  .grid-note{font-size:12.5px;color:var(--sage);font-style:italic;text-align:center;margin:12px 4px 22px;}
+
+  .core{display:flex;flex-direction:column;}
+  .core-row{display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid var(--soft);}
+  .core-row:first-child{border-top:none;}
+  .core-row .cl{flex:1;font-size:15px;color:var(--canopy);transition:color .3s;}
+  .core-row.reached .cl{color:var(--moss);}
+  .pips{display:flex;gap:5px;}
+  .pip{width:9px;height:9px;border-radius:50%;background:var(--soft);transition:background .3s;}
+  .pip.on{background:var(--leaf-bright);}
+  .core-row .cnt{font-size:12.5px;color:var(--sage);font-style:italic;min-width:56px;text-align:right;}
+
+  .flow-today{background:var(--paper);border:1px solid var(--line);border-radius:13px;padding:13px 15px;font-size:14.5px;color:var(--bark);}
+  .flow-today b{color:var(--canopy);font-weight:600;}
+
+  .rhythm-ref{margin-top:28px;border-top:1px solid var(--soft);padding-top:16px;}
+  .rhythm-ref summary{cursor:pointer;color:var(--sage);font-size:13px;text-decoration:underline;text-underline-offset:3px;list-style:none;}
+  .rhythm-ref summary::-webkit-details-marker{display:none;}
+  .rr-item{margin-top:16px;padding-left:14px;border-left:2px solid var(--soft);}
+  .rr-when{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--sage);font-weight:600;}
+  .rr-what{font-size:15px;color:var(--canopy);margin-top:3px;}
+  .rr-why{font-size:13px;color:var(--moss);font-style:italic;margin-top:3px;}
+  .rr-dur{font-size:12px;color:var(--sage);margin-top:2px;}
+
+  .monthly-p{font-size:16px;color:var(--bark);margin-top:2px;}
+
+  .values{display:flex;flex-wrap:wrap;gap:8px;}
+  .val{font-size:12.5px;color:var(--moss);background:var(--soft);border-radius:100px;padding:6px 13px;}
+
+  .vision{font-family:'Fraunces',serif;font-style:italic;font-size:19px;line-height:1.42;color:var(--moss);text-align:center;margin:32px 2px 4px;}
+
   .hidden{display:none;}
   .loading{text-align:center;padding:80px 20px;color:var(--sage);font-family:'Fraunces',serif;font-style:italic;font-size:19px;}
   @media (prefers-reduced-motion: reduce){*{transition:none!important;}}
@@ -145,8 +192,9 @@
     </div>
 
     <div class="seg">
-      <button id="tabToday" class="on" onclick="switchTab('today')">This morning</button>
-      <button id="tabTomorrow" onclick="switchTab('tomorrow')">Set up tomorrow</button>
+      <button id="tabToday" class="on" onclick="switchTab('today')">Morning</button>
+      <button id="tabRhythm" onclick="switchTab('rhythm')">Rhythm</button>
+      <button id="tabTomorrow" onclick="switchTab('tomorrow')">Tonight</button>
     </div>
 
     <!-- TODAY -->
@@ -165,6 +213,33 @@
           <button onclick="addItem()">Add</button>
         </div>
       </div>
+    </div>
+
+    <!-- RHYTHM -->
+    <div id="rhythmView" class="hidden">
+      <p class="mantra">Small steps, steady rhythm, lasting strength.</p>
+
+      <div class="grid-scroll"><table class="grid" id="grid"></table></div>
+      <p class="grid-note">Tap what you tended. Empty is rest, not a miss.</p>
+
+      <div class="t-label">This week</div>
+      <div class="core" id="coreHabits"></div>
+
+      <div class="t-label" style="margin-top:28px;">Today's flow</div>
+      <div class="flow-today" id="flowToday"></div>
+      <p class="mantra small">Swim. Stretch. Sleep.<br>Stay strong, calm and curious.</p>
+
+      <details class="rhythm-ref">
+        <summary>The daily rhythm</summary>
+        <div id="dailyRhythm"></div>
+      </details>
+
+      <div id="monthly" style="margin-top:28px;"></div>
+
+      <div class="t-label" style="margin-top:28px;">Core values</div>
+      <div class="values" id="values"></div>
+
+      <p class="vision">&ldquo;I live with strength, curiosity and grace &mdash; creating beauty, staying healthy, and enjoying a life filled with simple pleasures.&rdquo;</p>
     </div>
 
     <!-- TOMORROW -->
@@ -218,10 +293,57 @@ const DEFAULT_SEQUENCE = [
   {id:'gym', label:'Gym — leg press'}
 ];
 
+/* Weekly rhythm — the 7-day grid (top four are the daily rhythm,
+   the rest are the core habits, tracked per day). */
+const RHYTHM_HABITS = [
+  {id:'r_morning',  label:"Morning · 3 S's"},
+  {id:'r_reset',    label:'During day · Reset'},
+  {id:'r_evening',  label:'Evening · Stretch'},
+  {id:'r_bed',      label:'Before bed · Breath'},
+  {id:'swim',       label:'Swim'},
+  {id:'strength',   label:'Strength'},
+  {id:'stretch',    label:'Stretch'},
+  {id:'read',       label:'Read'},
+  {id:'adventure',  label:'Adventure'},
+  {id:'reflection', label:'Reflection'}
+];
+/* Core habits — gentle weekly shape, filled by the grid above. */
+const CORE = [
+  {id:'swim',       label:'3 Swims',      target:3},
+  {id:'strength',   label:'1–2 Strength', target:2, min:1},
+  {id:'stretch',    label:'5 Stretches',  target:5},
+  {id:'read',       label:'Read',         target:null},
+  {id:'adventure',  label:'1 Adventure',  target:1},
+  {id:'reflection', label:'1 Reflection', target:1}
+];
+const DAILY_RHYTHM = [
+  {when:'Morning',        what:"3 S's — Stretch · Sunlight · Sip water",     dur:'5 min',     why:'Wake the body gently.'},
+  {when:'During the day', what:'Posture & breath reset',                    dur:'2 min × 2', why:'Release tension.'},
+  {when:'Evening',        what:'Short stretch — hips · back · hamstrings',   dur:'5–10 min',  why:'Ease stiffness and leg pain.'},
+  {when:'Before bed',     what:'Legs-up-wall + 3 deep breaths',             dur:'3 min',     why:'Calm the nervous system.'}
+];
+const FLOW = [
+  {d:'Mon', full:'Monday',    text:'Swim → Breakfast → Enjoy the week.'},
+  {d:'Tue', full:'Tuesday',   text:'Yoga or mobility.'},
+  {d:'Wed', full:'Wednesday', text:'Swim → Strength.'},
+  {d:'Thu', full:'Thursday',  text:'Slow morning → Stretch → Gratitude.'},
+  {d:'Fri', full:'Friday',    text:'Swim → Treat yourself to a good coffee.'},
+  {d:'Sat', full:'Saturday',  text:'Adventure — Gallery · Garden · Walk · Friends.'},
+  {d:'Sun', full:'Sunday',    text:'Sleep in → Gentle yoga → Meal prep → Journal.'}
+];
+const MONTHLY = [
+  'Plan something to look forward to.',
+  'Review your health & finances.',
+  'Create something.',
+  'Reflect & reward yourself.'
+];
+const VALUES = ['Growth & Learning','Integrity','Curiosity','Independence','Creativity','Beauty'];
+
 let sequence = [];
 let doneIds = [];
 let todayPlan = null;
 let editMode = false;
+let tracking = {};
 
 function todayStr(){
   const d = new Date();
@@ -277,6 +399,7 @@ async function init(){
   }
 
   todayPlan = await sGet('plan_today');
+  tracking = (await sGet('tracking')) || {};
 
   // header
   document.getElementById('date').textContent = prettyDate();
@@ -287,6 +410,12 @@ async function init(){
   renderSprig();
   renderList();
   renderTomorrowInputs();
+  renderGrid();
+  renderCore();
+  renderFlow();
+  renderMonthly();
+  renderDailyRhythm();
+  renderValues();
 
   document.getElementById('loading').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
@@ -296,7 +425,7 @@ function renderFocus(){
   const list = document.getElementById('focusList');
   const things = (todayPlan && todayPlan.things || []).filter(t=>t && t.trim());
   if(things.length===0){
-    list.innerHTML = '<li class="empty">Nothing set yet. Head to "Set up tomorrow" tonight and it\'ll greet you here.</li>';
+    list.innerHTML = '<li class="empty">Nothing set yet. Head to "Tonight" this evening and it\'ll greet you here.</li>';
     return;
   }
   list.innerHTML = things.map((t,i)=>`<li><span>${i+1}</span>${escapeHtml(t)}</li>`).join('');
@@ -402,6 +531,91 @@ function addItem(){
 }
 function persistSeq(){ sSet('sequence', sequence); }
 
+/* ---- weekly rhythm tracking ---- */
+function dateKey(d){ return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate(); }
+function weekDates(){
+  const d = new Date();
+  const day = (d.getDay()+6)%7;        // Monday = 0
+  const mon = new Date(d); mon.setDate(d.getDate()-day); mon.setHours(0,0,0,0);
+  const out = [];
+  for(let i=0;i<7;i++){ const x=new Date(mon); x.setDate(mon.getDate()+i); out.push(dateKey(x)); }
+  return out;
+}
+function renderGrid(){
+  const dates = weekDates();
+  const today = todayStr();
+  const letters = ['M','T','W','T','F','S','S'];
+  let h = '<thead><tr><th class="hlabel"></th>';
+  dates.forEach((d,i)=>{ h += `<th class="${d===today?'col-today':''}">${letters[i]}</th>`; });
+  h += '</tr></thead><tbody>';
+  RHYTHM_HABITS.forEach(hab=>{
+    h += `<tr><td class="hlabel">${escapeHtml(hab.label)}</td>`;
+    dates.forEach(d=>{
+      const on = tracking[d] && tracking[d][hab.id];
+      h += `<td class="${d===today?'col-today':''}"><div class="cell ${on?'on':''}" onclick="toggleCell('${hab.id}','${d}')"><span class="dot"></span></div></td>`;
+    });
+    h += '</tr>';
+  });
+  h += '</tbody>';
+  document.getElementById('grid').innerHTML = h;
+}
+function toggleCell(habitId, d){
+  if(!tracking[d]) tracking[d] = {};
+  if(tracking[d][habitId]){
+    delete tracking[d][habitId];
+    if(Object.keys(tracking[d]).length===0) delete tracking[d];
+  } else {
+    tracking[d][habitId] = true;
+  }
+  sSet('tracking', tracking);
+  renderGrid();
+  renderCore();
+}
+function renderCore(){
+  const dates = weekDates();
+  document.getElementById('coreHabits').innerHTML = CORE.map(c=>{
+    const count = dates.reduce((n,d)=> n + (tracking[d] && tracking[d][c.id] ? 1 : 0), 0);
+    const reached = c.target ? count >= (c.min || c.target) : count > 0;
+    let pips = '';
+    if(c.target){ for(let i=0;i<c.target;i++) pips += `<span class="pip ${i<count?'on':''}"></span>`; }
+    let cnt;
+    if(reached) cnt = '🌿';
+    else if(count===0) cnt = 'anytime';
+    else cnt = `${count} so far`;
+    return `<div class="core-row ${reached?'reached':''}">
+      <span class="cl">${escapeHtml(c.label)}</span>
+      <span class="pips">${pips}</span>
+      <span class="cnt">${cnt}</span>
+    </div>`;
+  }).join('');
+}
+function renderFlow(){
+  const codes = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const today = codes[new Date().getDay()];
+  const f = FLOW.find(x=>x.d===today);
+  document.getElementById('flowToday').innerHTML = f
+    ? `<b>Today · ${f.full}</b> — ${escapeHtml(f.text)}`
+    : '';
+}
+function renderMonthly(){
+  const wk = Math.min(3, Math.floor((new Date().getDate()-1)/7));
+  document.getElementById('monthly').innerHTML =
+    `<div class="t-label">This month · week ${wk+1}</div><p class="monthly-p">${escapeHtml(MONTHLY[wk])}</p>`;
+}
+function renderDailyRhythm(){
+  document.getElementById('dailyRhythm').innerHTML = DAILY_RHYTHM.map(r=>`
+    <div class="rr-item">
+      <div class="rr-when">${escapeHtml(r.when)}</div>
+      <div class="rr-what">${escapeHtml(r.what)}</div>
+      <div class="rr-dur">${escapeHtml(r.dur)}</div>
+      <div class="rr-why">${escapeHtml(r.why)}</div>
+    </div>`).join('');
+}
+function renderValues(){
+  document.getElementById('values').innerHTML =
+    VALUES.map(v=>`<span class="val">${escapeHtml(v)}</span>`).join('');
+}
+
 /* ---- tomorrow ---- */
 async function renderTomorrowInputs(){
   const plan = await sGet('plan_tomorrow');
@@ -420,11 +634,12 @@ async function savePlan(){
 }
 
 function switchTab(which){
-  const t = which==='today';
-  document.getElementById('todayView').classList.toggle('hidden', !t);
-  document.getElementById('tomorrowView').classList.toggle('hidden', t);
-  document.getElementById('tabToday').classList.toggle('on', t);
-  document.getElementById('tabTomorrow').classList.toggle('on', !t);
+  const views = {today:'todayView', rhythm:'rhythmView', tomorrow:'tomorrowView'};
+  const tabs  = {today:'tabToday',  rhythm:'tabRhythm',  tomorrow:'tabTomorrow'};
+  for(const k in views){
+    document.getElementById(views[k]).classList.toggle('hidden', k!==which);
+    document.getElementById(tabs[k]).classList.toggle('on', k===which);
+  }
 }
 
 function escapeHtml(s){return (s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
