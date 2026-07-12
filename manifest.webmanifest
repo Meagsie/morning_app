@@ -1,7 +1,7 @@
 {
-  "name": "Into the Day",
-  "short_name": "Into the Day",
-  "description": "A gentle morning activation ritual.",
+  "name": "The Life I'm Building",
+  "short_name": "The Life",
+  "description": "A calm, practical personal operating system for the life I am building now.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

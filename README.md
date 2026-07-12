@@ -1,21 +1,21 @@
-# Into the Day
+# The Life I'm Building
 
-A personal morning activation app — a gentle greeting, today's focus, and a
-sequence of small physical actions that grow a sprig as you tick them off.
-Set three things that matter tonight and they're waiting for you tomorrow.
+A calm, practical personal operating system — not a productivity app.
+It helps with: getting out of bed without scrolling, protecting mornings,
+body care and recovery after demanding hospitality shifts, the pool and gym
+downstairs, sketching and noticing, apartment ideas, planned joy, money calm,
+and parking tomorrow's priorities before bed so sleep stays quiet.
 
-Three calm spaces:
-- **Morning** — greeting, today's focus, the sprig sequence.
-- **Rhythm** — a 7-day habit grid, gentle weekly core habits, the daily
-  rhythm, today's flow, this month's check-in, your values and vision.
-  Nothing here keeps score or shames a blank day — empty is rest, not a miss.
-- **Tonight** — set the three things that matter tomorrow.
+Built on behaviour-design principles: identity-based habits, tiny versions,
+habit stacking, environment design, satisfying (but adult) feedback, and
+recovery after missed days — never guilt.
 
-Installable as a PWA (Add to Home Screen on iPhone). Works offline.
-Everything is stored privately on the device — no accounts, no server.
+Installable PWA (Add to Home Screen on iPhone). Works offline.
+Everything stays on the device — no accounts, no server, manual money input only.
 
 ## Files
-- `index.html` — the whole app
-- `manifest.webmanifest` — app name, icon, full-screen install settings
-- `sw.js` — service worker (offline support)
-- `icon-*.png`, `apple-touch-icon.png` — home-screen icons
+- `index.html` — shell
+- `styles.css` — the calm
+- `app.js` — all fifteen screens and flows
+- `sw.js` — offline support
+- `manifest.webmanifest`, `icon-*.png` — install + icons

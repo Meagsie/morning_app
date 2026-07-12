@@ -1,10 +1,12 @@
-/* Into the Day — service worker.
+/* The Life I'm Building — service worker.
    Precaches the app shell so it opens instantly and works with no signal;
    fonts are cached the first time they load. */
-const CACHE = 'intotheday-v1';
+const CACHE = 'intotheday-v2';
 const SHELL = [
   './',
   './index.html',
+  './styles.css',
+  './app.js',
   './manifest.webmanifest',
   './icon-192.png',
   './icon-512.png',
@@ -42,16 +44,20 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Everything else (icons, fonts): cached copy first, network to fill the cache.
+  // Everything else (styles, script, icons, fonts): cache first with
+  // background refresh so updates arrive on the next open.
   e.respondWith(
-    caches.match(req).then(hit => hit || fetch(req).then(res => {
-      if (res.ok && (new URL(req.url).origin === location.origin ||
-                     req.url.includes('fonts.googleapis.com') ||
-                     req.url.includes('fonts.gstatic.com'))) {
-        const copy = res.clone();
-        caches.open(CACHE).then(c => c.put(req, copy));
-      }
-      return res;
-    }).catch(() => hit))
+    caches.match(req).then(hit => {
+      const refresh = fetch(req).then(res => {
+        if (res.ok && (new URL(req.url).origin === location.origin ||
+                       req.url.includes('fonts.googleapis.com') ||
+                       req.url.includes('fonts.gstatic.com'))) {
+          const copy = res.clone();
+          caches.open(CACHE).then(c => c.put(req, copy));
+        }
+        return res;
+      }).catch(() => hit);
+      return hit || refresh;
+    })
   );
 });
