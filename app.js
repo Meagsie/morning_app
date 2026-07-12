@@ -56,9 +56,29 @@ const IDENTITIES = [
   'I am someone who comes back after a bad day.',
   'I am someone who builds self-trust through small repeated actions.'
 ];
+/* ---------- personal constitution ----------
+   Placeholder articles drawn from our conversation. They are meant to be
+   replaced with the real articles from Megan's own constitution project —
+   editable in-app on the "My Constitution" screen. Each article's `ev`
+   lists the habit ids that count as evidence toward it, so every tick
+   quietly builds the identity it belongs to. */
+const DEFAULT_CONSTITUTION = [
+  {id:'mornings', text:'I protect my mornings. I get up and start the day before the phone decides it.', ev:['noscroll']},
+  {id:'body', text:'I care for my body. I move for strength and ease, never punishment.', ev:['mstretch','stretch','reset','legsup','hips','winddown','strength']},
+  {id:'water', text:'I return to the water. I use the pool that is already in my building.', ev:['swim']},
+  {id:'land', text:'I let work end. I land, recover, and protect my evenings.', ev:['land']},
+  {id:'create', text:'I notice beauty and sketch ideas before they disappear. I am building my eye.', ev:['sketch','notice','homeidea']},
+  {id:'money', text:'I look at the number. Money is information, not fear.', ev:['money','moneyweek']},
+  {id:'joy', text:'I plan joy on purpose. A life is more than its responsibilities.', ev:['joy']},
+  {id:'park', text:'I park tomorrow before bed. I do not carry it into sleep.', ev:['close','park']},
+  {id:'return', text:'I come back after a bad day. Missing once is human; returning is who I am.', ev:['returned']},
+  {id:'trust', text:'I build self-trust through small, repeated, real actions.', ev:[]}
+];
 function identityToday(){
+  const arts = (S.constitution && S.constitution.length) ? S.constitution : null;
   const d=new Date();
   const doy=Math.floor((d - new Date(d.getFullYear(),0,0))/86400000);
+  if(arts) return arts[doy % arts.length].text;
   return IDENTITIES[doy % IDENTITIES.length];
 }
 
@@ -223,6 +243,7 @@ function loadState(){
   S.money = DB.get('moneyData', {upcoming:[],confirms:{},looks:[],action:''});
   S.weekly = DB.get('weekly', {});
   S.monthly = DB.get('monthly', {});
+  S.constitution = DB.get('constitution', DEFAULT_CONSTITUTION.map(a=>Object.assign({},a)));
   S.planToday = DB.get('plan_today', null);
   S.planTomorrow = DB.get('plan_tomorrow', null);
 }
@@ -250,18 +271,31 @@ function rollover(){
 }
 function saveDay(){ DB.set('dayState', S.day); }
 
+/* ---------- kept promises (the day's collected achievements) ----------
+   Every meaningful tick anywhere in the app lands here, so there is one
+   place that fills up with evidence of what you did today. */
+function keptKey(){ return 'kept:'+todayStr(); }
+function keptToday(){ return DB.get(keptKey(), []); }
+function markKept(id, label){
+  const arr = keptToday();
+  if(!arr.some(k=>k.id===id)){ arr.push({id, label: label||id}); DB.set(keptKey(), arr); return true; }
+  return false;
+}
+function unmarkKept(id){ DB.set(keptKey(), keptToday().filter(k=>k.id!==id)); }
+
 /* ---------- habit logging ---------- */
-function logHabit(id){
+function logHabit(id, label){
   const t = todayStr();
   if(!S.tracking[t]) S.tracking[t] = {};
   S.tracking[t][id] = true;
   DB.set('tracking', S.tracking);
+  if(label) markKept(id, label);
 }
 function loggedToday(id){ const t=S.tracking[todayStr()]; return !!(t && t[id]); }
 function habit(id){ return S.habits.find(h=>h.id===id); }
 function completeHabit(id, versionLabel){
-  logHabit(id);
   const h = habit(id);
+  logHabit(id, h ? h.name : 'Kept a promise');
   toast(h ? h.done : 'That counts.');
   render();
 }
@@ -309,7 +343,7 @@ ROUTES.home = function(){
   let html = `
     <div class="date">${prettyDate()}${S.day.lowEnergy?' · tired day':''}</div>
     <h1 class="greet">${g} <em>${esc(S.settings.name)}</em></h1>
-    <p class="identity">${esc(identityToday())}</p>
+    <p class="identity" onclick="go('constitution')" style="cursor:pointer">${esc(identityToday())}</p>
 
     <div class="chips">
       <button class="chip ${work?'on':''}" onclick="setDayType('work')">Workday</button>
@@ -346,12 +380,22 @@ ROUTES.home = function(){
       </div>`;
     }).join('') + `</div>`;
 
-  // quiet progress
-  html += `<div class="sprig-wrap"><svg id="sprig" viewBox="0 0 120 150"></svg></div>
-    <p class="grid-note">Each kept promise grows a leaf. Nothing wilts.</p>`;
+  // kept promises — the day's collected achievements, growing the sprig
+  const keptList = keptToday();
+  html += `<div class="sprig-wrap"><svg id="sprig" viewBox="0 0 120 150"></svg></div>`;
+  if(keptList.length){
+    html += `<p class="kept-count"><b>${keptList.length}</b> kept today · each one is evidence</p>
+      <div class="list" style="margin-top:8px">` +
+      keptList.map(k=>`<div class="item done"><div class="tick">${tickSvg()}</div><div class="txt"><div class="label">${esc(k.label)}</div></div></div>`).join('') +
+      `</div>
+      <p class="grid-note">This is how self-trust is built. Nothing here wilts.</p>`;
+  } else {
+    html += `<p class="grid-note">Tick anything today — an anchor, a stretch, a swim —<br>and it lands here as evidence, and grows the sprig.</p>`;
+  }
 
   // sections hub
   const hub = [
+    ['constitution','My Constitution','who I am becoming'],
     ['morning','Morning Start','feet on the floor first'],
     ['body','Body Care','stretch, mobility, recovery'],
     ['move','Swim & Strength','the pool is downstairs'],
@@ -410,18 +454,19 @@ function anchorDone(i){ const t=S.tracking[todayStr()]; return !!(t && t['anchor
 function toggleAnchor(i){
   const t=todayStr();
   if(!S.tracking[t]) S.tracking[t]={};
-  if(S.tracking[t]['anchor'+i]) delete S.tracking[t]['anchor'+i];
-  else { S.tracking[t]['anchor'+i]=true; toast(tone({soft:'Gently done.',direct:'Kept.',firm:'Small, repeated, real.'})); }
+  const key='anchor'+i;
+  if(S.tracking[t][key]){ delete S.tracking[t][key]; unmarkKept(key); }
+  else { S.tracking[t][key]=true; markKept(key, weekPlanNow().anchors[i]||'Anchor kept'); toast(tone({soft:'Gently done.',direct:'Kept.',firm:'Small, repeated, real.'})); }
   DB.set('tracking', S.tracking);
   render();
 }
 
 function drawSprig(){
   const svg=document.getElementById('sprig'); if(!svg) return;
-  const anchors=weekPlanNow().anchors;
-  const n=anchors.length||1;
-  const doneCount=anchors.filter((a,i)=>anchorDone(i)).length;
-  const allDone=doneCount===n&&n>0;
+  const kept=keptToday().length;
+  const n=Math.max(3, Math.min(kept+1, 8));   // always one more ghost leaf inviting the next tick
+  const doneCount=Math.min(kept, 8);
+  const allDone=kept>=8;
   const baseX=60, baseY=145, topY=34;
   let html=`<path d="M${baseX} ${baseY} C ${baseX-10} ${baseY-40}, ${baseX+9} ${baseY-70}, ${baseX} ${topY+6}" stroke="var(--moss)" stroke-width="3.2" fill="none" stroke-linecap="round"/>`;
   for(let i=0;i<n;i++){
@@ -494,7 +539,7 @@ function morningNext(){
   morningStep++;
   if(morningStep>=MORNING_SEQ.length){
     S.day.morningDone=true; saveDay();
-    logHabit('noscroll');
+    logHabit('noscroll','Got up without scrolling');
   }
   render();
 }
@@ -543,7 +588,8 @@ function versionCard(b){
   </div>`;
 }
 function logBody(id){
-  logHabit(id);
+  const bn=(BODY_HABITS.find(x=>x.id===id)||{}).name;
+  logHabit(id, bn||'Cared for my body');
   logHabit('stretch_any');
   const msgs = {
     mstretch:'Your body gets a say in the morning too.',
@@ -607,9 +653,9 @@ const RECOVER_KINDS = [
 ];
 ROUTES.recover = function(){
   let html = shead('After Work Recovery', 'You are allowed to land. No walking prompts here — your shift already covered the steps.');
+  const lsteps=['Put the phone down','Change clothes','Drink water','Eat something simple if needed','Shower if it helps','Five-minute body reset or legs up the wall'];
   html += `<div class="t-label">The landing sequence</div><div class="list">` +
-    ['Put the phone down','Change clothes','Drink water','Eat something simple if needed','Shower if it helps','Five-minute body reset or legs up the wall'].map(s=>
-      `<div class="item" onclick="this.classList.toggle('done')"><div class="tick">${tickSvg()}</div><div class="txt"><div class="label">${esc(s)}</div></div></div>`).join('') + `</div>`;
+    lsteps.map((s,i)=>`<div class="item ${landStepOn(i)?'done':''}" onclick="toggleLandStep(${i})"><div class="tick">${tickSvg()}</div><div class="txt"><div class="label">${esc(s)}</div></div></div>`).join('') + `</div>`;
 
   html += `<div class="t-label">What kind of day was it?</div><div class="chips">` +
     RECOVER_KINDS.map(k=>`<button class="chip ${recoverKind===k.id?'on':''}" onclick="recoverKind='${k.id}';render()">${esc(k.label)}</button>`).join('') + `</div>`;
@@ -624,9 +670,16 @@ ROUTES.recover = function(){
   html += `<p class="footer-note">Choose the kindest useful action. What can wait until tomorrow — can wait.<br>Do not turn the whole evening into recovery admin.</p>`;
   return html;
 };
+function landStepOn(i){ const t=S.tracking[todayStr()]; return !!(t && t['ls'+i]); }
+function toggleLandStep(i){
+  const t=todayStr();
+  if(!S.tracking[t]) S.tracking[t]={};
+  if(S.tracking[t]['ls'+i]) delete S.tracking[t]['ls'+i]; else S.tracking[t]['ls'+i]=true;
+  DB.set('tracking',S.tracking); render();
+}
 function landed(){
   S.day.landed=true; saveDay();
-  logHabit('land');
+  logHabit('land','Landed after work');
   recoverKind=null;
   toast('You are allowed to land.');
   go('home');
@@ -715,7 +768,7 @@ function closeFinish(){
   }
   DB.set('parking', S.parking);
   S.day.closed=true; saveDay();
-  logHabit('close');
+  logHabit('close','Closed the day');
   closeStep=5;
   render();
 }
@@ -752,7 +805,7 @@ function addPark(){
   const v=e.value.trim(); if(!v) return;
   S.parking.unshift({id:uid(), text:v, cat:parkCat, done:false});
   DB.set('parking', S.parking);
-  logHabit('park');
+  logHabit('park','Parked a thought');
   e.value='';
   toast('Captured means you can stop holding it.');
   render();
@@ -821,8 +874,8 @@ function addCapture(kind){
   const e=document.getElementById('cap_'+kind);
   const v=e.value.trim(); if(!v) return;
   const entry={id:uid(), text:v, cat:(kind==='creative'?capCatCreative:capCatHome)||'', date:todayStr()};
-  if(kind==='creative'){ S.ideasCreative.unshift(entry); DB.set('ideasCreative',S.ideasCreative); logHabit('notice'); toast('Noticing is part of the work.'); }
-  else { S.ideasHome.unshift(entry); DB.set('ideasHome',S.ideasHome); logHabit('homeidea'); toast('You captured it. You do not have to solve it today.'); }
+  if(kind==='creative'){ S.ideasCreative.unshift(entry); DB.set('ideasCreative',S.ideasCreative); logHabit('notice','Kept a creative idea'); toast('Noticing is part of the work.'); }
+  else { S.ideasHome.unshift(entry); DB.set('ideasHome',S.ideasHome); logHabit('homeidea','Captured a home idea'); toast('You captured it. You do not have to solve it today.'); }
   e.value='';
   render();
 }
@@ -832,7 +885,7 @@ function delCapture(kind,id){
   render();
 }
 function logCreative(which){
-  logHabit(which);
+  logHabit(which, which==='sketch'?'Sketched':'Noticed something');
   toast(which==='sketch'?'You are building your eye.':'Noticing is part of the work.');
   render();
 }
@@ -865,7 +918,7 @@ function addJoy(){
   const e=document.getElementById('joyInput'); const v=e.value.trim(); if(!v) return;
   S.joyList.unshift({id:uid(), text:v, cat:joyCat||'', done:false});
   DB.set('joyList',S.joyList);
-  logHabit('joy');
+  logHabit('joy','Planned something good');
   e.value='';
   toast('This is part of having a life.');
   render();
@@ -932,7 +985,7 @@ function addLook(){
   S.money.looks.unshift({num:v, date:prettyDate()});
   S.money.looks=S.money.looks.slice(0,10);
   DB.set('moneyData',S.money);
-  logHabit('money');
+  logHabit('money','Looked at the money');
   toast('The number is information.');
   render();
 }
@@ -1041,7 +1094,7 @@ function wkFinish(){
   const wk=weekDates(0)[0];
   S.weekly[wk]=wkData;
   DB.set('weekly',S.weekly);
-  logHabit('moneyweek');
+  logHabit('moneyweek','Did the weekly reset');
   wkStep=WK_QUESTIONS.length+2;
   render();
 }
@@ -1189,6 +1242,56 @@ function saveSettings(){
 }
 
 /* ============================================================
+   MY CONSTITUTION — the person being built
+   ============================================================ */
+let editArtId = null;
+function evidenceCount(a, wk){
+  if(!a.ev || !a.ev.length){
+    // the "self-trust" kind of article: evidence = every kept promise this week
+    return wk.reduce((s,d)=> s + DB.get('kept:'+d, []).length, 0);
+  }
+  return wk.reduce((s,d)=>{ const t=S.tracking[d]||{}; return s + a.ev.filter(id=>t[id]).length; }, 0);
+}
+ROUTES.constitution = function(){
+  const wk = weekDates(0);
+  let html = shead('My Constitution', 'The person you are becoming — in your own words. Every kept promise is a quiet vote for one of these.');
+  html += S.constitution.map(a=>{
+    if(editArtId===a.id){
+      return `<div class="card"><div class="field"><textarea id="art_${a.id}" maxlength="200">${esc(a.text)}</textarea></div>
+        <div class="btnrow"><button class="btn ghost" onclick="editArtId=null;render()">Cancel</button><button class="btn" onclick="saveArticle('${a.id}')">Save</button></div></div>`;
+    }
+    const n = evidenceCount(a, wk);
+    const ev = n
+      ? ('Evidence this week &nbsp; '+'🌿'.repeat(Math.min(n,7))+(n>7?(' +'+(n-7)):''))
+      : 'No evidence yet this week — one small action counts.';
+    return `<div class="card">
+      <div class="const-art">${esc(a.text)}</div>
+      <div class="why" style="margin-top:9px">${ev}</div>
+      <div style="margin-top:10px;display:flex;gap:8px;justify-content:flex-end">
+        <button class="mini" title="edit" onclick="editArtId='${a.id}';render()">&#9998;</button>
+        <button class="mini" title="remove" onclick="delArticle('${a.id}')">&times;</button>
+      </div>
+    </div>`;
+  }).join('');
+  html += `<div class="addrow"><input type="text" id="artInput" maxlength="200" placeholder="Add an article — “I am someone who…”"><button class="btn" onclick="addArticle()">Add</button></div>
+    <p class="footer-note">These are placeholders drawn from our conversation.<br>Edit them — or paste the articles from your own constitution — so this speaks in your voice.</p>`;
+  return html;
+};
+function saveArticle(id){
+  const e=document.getElementById('art_'+id);
+  const a=S.constitution.find(x=>x.id===id);
+  if(a && e && e.value.trim()){ a.text=e.value.trim(); DB.set('constitution',S.constitution); }
+  editArtId=null; toast('Written in.'); render();
+}
+function addArticle(){
+  const e=document.getElementById('artInput'); const v=e.value.trim(); if(!v) return;
+  S.constitution.push({id:uid(), text:v, ev:[]});
+  DB.set('constitution',S.constitution);
+  e.value=''; toast('An article of your own.'); render();
+}
+function delArticle(id){ S.constitution=S.constitution.filter(x=>x.id!==id); DB.set('constitution',S.constitution); render(); }
+
+/* ============================================================
    RESET ME — the return flow
    ============================================================ */
 let resetState=null;
@@ -1232,7 +1335,7 @@ function drawReset(){
 }
 function resetPick(n){ resetState.name=n; resetState.step=1; drawReset(); }
 function resetReturned(route){
-  logHabit('returned');
+  logHabit('returned','Came back');
   S.day.returned=true; saveDay();
   closeReset();
   toast('You returned. That matters.');
