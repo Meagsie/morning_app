@@ -513,6 +513,7 @@ function swapPool(){
   if(hi) pool.push({id:'home_nudge', label:'Sketch one detail of: '+hi.text, meta:'Captured ideas want ten minutes.', route:'homeideas'});
   if(!loggedToday('money')) pool.push({id:'money', label:'Look at one money number', meta:'The number is information.', route:'moneycalm'});
   pool.push(
+    {id:'crawlplan', label:'Pick a street for a design crawl — Gertrude, Church, Smith', meta:'Shops as free galleries. Form & Foliage research.', route:'joy'},
     {id:'read', label:'Read ten pages', meta:'A chapter a week is a shelf a year.', route:null},
     {id:'balance', label:'Balance on one leg, thirty seconds a side', meta:'While the kettle boils — bones love load. (Unbreakable)', route:null},
     {id:'posture', label:'Two-minute posture and breath reset', meta:'Shoulders down, jaw loose. (How to Have a Good Day)', route:null}
@@ -1058,12 +1059,28 @@ const JOY_SOURCES = [
     {label:'MPavilion program', url:'https://mpavilion.org/', note:'design talks in a garden'},
     {label:'Open House Melbourne', url:'https://openhousemelbourne.org/', note:'inside the city’s best buildings'}
   ]},
+  {group:'Shops that teach the eye', items:[
+    {label:'Jardan — Richmond flagship', url:'https://www.jardan.com.au/pages/melbourne-showroom', note:'522 Church St — furniture row starts here'},
+    {label:'Eco Outdoor — Melbourne showroom', url:'https://www.eco-outdoor.com/en-au/showrooms/melbourne-vic-au', note:'422 Burnley St — stone, cladding, outdoor pieces'},
+    {label:'Modern Times — Fitzroy', url:'https://moderntimes.com.au/', note:'mid-century + local art'},
+    {label:'Mr Kitly — Brunswick', url:'https://mrkitly.com.au/', note:'ceramics and indoor plants above Sydney Rd'},
+    {label:'Tait — outdoor furniture', url:'https://madebytait.com.au/', note:'Melbourne-made, garden-adjacent'},
+    {label:'Craft Victoria', url:'https://craft.org.au/', note:'makers, materials, exhibitions'}
+  ]},
   {group:'Browse what’s on', items:[
     {label:'What’s On Melbourne', url:'https://whatson.melbourne.vic.gov.au/', note:'the city’s official listing'},
     {label:'Broadsheet Melbourne', url:'https://www.broadsheet.com.au/melbourne', note:'good taste, kept current'},
     {label:'Eventbrite — arts this weekend', url:'https://www.eventbrite.com.au/d/australia--melbourne/arts--events--this-weekend/', note:'workshops, openings, classes'},
     {label:'TryBooking — search events', url:'https://www.trybooking.com/book/search', note:'the small and local ones'}
   ]}
+];
+/* Design crawls — whole streets as inspiration. One tap puts it in the week. */
+const CRAWLS = [
+  {text:'Design crawl: Gertrude & Brunswick St, Fitzroy — homewares, galleries, the good windows', cat:'Small adventures'},
+  {text:'Design crawl: Church St, Richmond — furniture row, starting at Jardan', cat:'Interiors'},
+  {text:'Design crawl: Smith & Johnston St — Modern Times and the vintage rooms', cat:'Interiors'},
+  {text:'Eco Outdoor, Richmond — stone and outdoor furniture, Form & Foliage research', cat:'Learning'},
+  {text:'Mr Kitly, Brunswick — ceramics and indoor plants above Sydney Road', cat:'Beauty'}
 ];
 ROUTES.joy = function(){
   let html = shead('Joy Plan', 'Joy does not happen by accident. This is not indulgence — it is maintenance.');
@@ -1075,6 +1092,17 @@ ROUTES.joy = function(){
   const open=S.joyList.filter(j=>!j.done), had=S.joyList.filter(j=>j.done);
   if(open.length) html += `<div class="t-label">To look forward to</div>` + open.map(j=>joyEntry(j)).join('');
   if(had.length) html += `<div class="t-label">Enjoyed</div>` + had.slice(0,8).map(j=>joyEntry(j)).join('');
+
+  // design crawls — one tap from suggestion to plan
+  html += `<div class="t-label">Design crawls — shops that teach the eye</div>
+    <p class="smallprint" style="margin:0 0 4px">Whole streets as free galleries. Tap + and it joins the week.</p>` +
+    CRAWLS.map((c,i)=>{
+      const added = S.joyList.some(j=>j.text===c.text && !j.done);
+      return `<div class="entry ${added?'dim':''}">
+        <div class="etxt">${esc(c.text)}<span class="ecat">${esc(c.cat)}</span></div>
+        <button class="mini" onclick="addCrawl(${i})">${added?'✓':'+'}</button>
+      </div>`;
+    }).join('');
 
   // find something good — live what's-on pages, opened in the browser
   html += `<div class="t-label">Find something good</div>
@@ -1108,6 +1136,15 @@ function addJoy(){
 }
 function toggleJoy(id){ const j=S.joyList.find(x=>x.id===id); if(j){ j.done=!j.done; DB.set('joyList',S.joyList); if(j.done) toast('Enjoyed. That was the point.'); render(); } }
 function delJoy(id){ S.joyList=S.joyList.filter(x=>x.id!==id); DB.set('joyList',S.joyList); render(); }
+function addCrawl(i){
+  const c=CRAWLS[i]; if(!c) return;
+  if(S.joyList.some(j=>j.text===c.text && !j.done)){ toast('Already in the week.'); return; }
+  S.joyList.unshift({id:uid(), text:c.text, cat:c.cat, done:false});
+  DB.set('joyList',S.joyList);
+  logHabit('joy','Planned something good');
+  toast('In the week. Take the sketchbook.');
+  render();
+}
 
 /* ============================================================
    11. MONEY CALM
