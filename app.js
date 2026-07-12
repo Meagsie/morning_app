@@ -405,16 +405,13 @@ ROUTES.home = function(){
     html += `<p class="grid-note">The tiny version counts. It keeps the habit alive.</p>`;
   }
 
-  if(things.length){
-    html += `<div class="t-label">You already chose what matters today</div>
-      <div class="focus"><ul>${things.map((t,i)=>`<li><span>${i+1}</span>${esc(t)}</li>`).join('')}</ul>
-      ${plan.first?`<div class="first-action">First tiny action: <b>${esc(plan.first)}</b></div>`:''}
-      </div>`;
-  }
+  html += priorityBlock();
+  html += swapsBlock();
 
   // sections hub
   const hub = [
     ['constitution','My Constitution','who I am becoming'],
+    ['why','Why this works','the three books underneath'],
     ['morning','Morning Start','feet on the floor first'],
     ['body','Body Care','stretch, mobility, recovery'],
     ['move','Swim & Strength','the pool is downstairs'],
@@ -459,6 +456,77 @@ function nextAction(){
 
 function setDayType(t){ S.day.dayType=t; S.day.guessed=false; saveDay(); render(); }
 function toggleLowEnergy(){ S.day.lowEnergy=!S.day.lowEnergy; saveDay(); render(); }
+
+/* ---------- today's priorities (chosen last night, tickable today) ---------- */
+function priList(){ return (S.planToday && S.planToday.things || []).map(t=>(t||'').trim()).filter(Boolean); }
+function priDone(i){ const t=S.tracking[todayStr()]; return !!(t && t['pri'+i]); }
+function togglePri(ev, i){
+  const things = priList();
+  if(!things[i]) return;
+  if(priDone(i)){ unlogHabit('pri'+i); render(); return; }
+  logHabit('pri'+i, things[i]);
+  leafBurst(ev);
+  const doneN = things.filter((x,j)=> j===i || priDone(j)).length;
+  toast(doneN>=things.length ? 'All of them. The day is won.' :
+        doneN===2 ? 'Two down. That is momentum.' : 'One of three. Started is the hard part.');
+  render();
+}
+function priorityBlock(){
+  const things = priList();
+  if(!things.length) return '';
+  const plan = S.planToday;
+  return `<div class="t-label">You already chose what matters today</div>
+    <div class="list">` +
+    things.map((t,i)=>`<div class="item ${priDone(i)?'done':''}" onclick="togglePri(event,${i})">
+      <div class="tick">${tickSvg()}</div>
+      <div class="txt"><div class="label">${esc(t)}</div></div>
+    </div>`).join('') + `</div>
+    ${plan.first && !things.every((x,i)=>priDone(i)) ? `<div class="first-action">First tiny action: <b>${esc(plan.first)}</b></div>`:''}`;
+}
+
+/* ---------- instead of the scroll: small trades from your own life ---------- */
+let SWAPS_NOW = [];
+function swapPool(){
+  const d=new Date();
+  const doy=Math.floor((d - new Date(d.getFullYear(),0,0))/86400000);
+  const pool=[];
+  pool.push({id:'sketch', label:CREATIVE_PROMPTS[doy % CREATIVE_PROMPTS.length], meta:'Five minutes builds the eye.', route:'creative'});
+  const joy = S.joyList.find(j=>!j.done);
+  if(joy) pool.push({id:'joy_nudge', label:'Move a joy plan along: '+joy.text, meta:'Book it, or just picture when.', route:'joy'});
+  const hi = S.ideasHome[0];
+  if(hi) pool.push({id:'home_nudge', label:'Sketch one detail of: '+hi.text, meta:'Captured ideas want ten minutes.', route:'homeideas'});
+  if(!loggedToday('money')) pool.push({id:'money', label:'Look at one money number', meta:'The number is information.', route:'moneycalm'});
+  pool.push(
+    {id:'read', label:'Read ten pages', meta:'A chapter a week is a shelf a year.', route:null},
+    {id:'balance', label:'Balance on one leg, thirty seconds a side', meta:'While the kettle boils — bones love load. (Unbreakable)', route:null},
+    {id:'posture', label:'Two-minute posture and breath reset', meta:'Shoulders down, jaw loose. (How to Have a Good Day)', route:null}
+  );
+  return pool.filter(p=>!keptToday().some(k=>k.id===p.id));
+}
+function swapsBlock(){
+  const pool = swapPool();
+  if(!pool.length) return '';
+  const d=new Date();
+  const doy=Math.floor((d - new Date(d.getFullYear(),0,0))/86400000);
+  const off=(doy*3 + Math.floor(hourNow()/4)) % pool.length;
+  const n=Math.min(3, pool.length);
+  SWAPS_NOW = Array.from({length:n},(_,k)=>pool[(off+k)%pool.length]);
+  return `<div class="t-label">Instead of the scroll</div>
+    <p class="smallprint" style="margin:0 0 4px">Phone in hand, hour going nowhere? Trade ten minutes. The swap is the trick — not willpower.</p>
+    <div class="list">` +
+    SWAPS_NOW.map((s,k)=>`<div class="item" onclick="swapTick(event,${k})">
+      <div class="tick">${tickSvg()}</div>
+      <div class="txt"><div class="label">${esc(s.label)}</div><div class="meta">${esc(s.meta)}</div></div>
+      ${s.route?`<button class="mini" onclick="event.stopPropagation();go('${s.route}')" title="open">›</button>`:''}
+    </div>`).join('') + `</div>`;
+}
+function swapTick(ev, k){
+  const s = SWAPS_NOW[k]; if(!s) return;
+  logHabit(s.id, s.label.length>60 ? s.label.slice(0,57)+'…' : s.label);
+  leafBurst(ev);
+  toast('Ten minutes you’ll remember. That counts.');
+  render();
+}
 
 /* ---------- today's habits (front and centre on Home) ---------- */
 function todayHabitIds(){
@@ -570,11 +638,7 @@ ROUTES.morning = function(){
     return html;
   }
 
-  if(things.length){
-    html += `<div class="t-label">Yesterday you chose what matters today</div>
-      <div class="focus"><ul>${things.map((t,i)=>`<li><span>${i+1}</span>${esc(t)}</li>`).join('')}</ul>
-      ${plan.first?`<div class="first-action">First tiny action: <b>${esc(plan.first)}</b></div>`:''}</div>`;
-  }
+  html += priorityBlock();
 
   const allDone = MORNING_SEQ.every((s,i)=>msOn(i));
   html += `<div class="t-label">Tick as you go</div><div class="list">` +
@@ -634,7 +698,8 @@ ROUTES.body = function(){
     'You already walk more than 10,000 steps at work. You do not need more steps — you need care. This is recovery, mobility and strength for a body that works hard.');
   html += `<p class="smallprint">Tap the version you did — full, tiny, low-energy or recovery. Something counts.</p>`;
   html += BODY_HABITS.map(b=>versionCard(b)).join('');
-  html += `<p class="footer-note">Do the version that helps tomorrow.<br>The tiny version keeps the habit alive.</p>`;
+  html += `<p class="footer-note">Do the version that helps tomorrow. The tiny version keeps the habit alive.<br>
+    After Dr Vonda Wright's <i>Unbreakable</i>: muscle and bone are the organs of longevity —<br>strength, mobility, balance and recovery, not more steps.</p>`;
   return html;
 };
 function versionCard(b){
@@ -795,7 +860,8 @@ ROUTES.close = function(){
       `<button class="chip ${closeData.easier.includes(c)?'on':''}" onclick="closeToggleEasier('${esc(c)}')">${esc(c)}</button>`).join('')}</div>
 
     <button class="btn wide" onclick="closeFinish()">Close the day</button>
-    <p class="footer-note">You do not have to fill all of this. One priority is a real close.</p>`;
+    <p class="footer-note">You do not have to fill all of this. One priority is a real close.<br>
+    Caroline Webb, <i>How to Have a Good Day</i>: a good day is designed at its edges —<br>intentions in the morning, a clean close at night.</p>`;
 };
 function closeReopen(){
   const p = S.planTomorrow || {};
@@ -1241,7 +1307,7 @@ ROUTES.habits = function(){
     });
   });
   html += `<div class="addrow"><input type="text" id="newHabit" maxlength="60" placeholder="Add a habit"><button class="btn" onclick="addHabit()">Add</button></div>
-    <p class="footer-note">Make it obvious. Make it easy. Make it satisfying.<br>Never miss twice — but missing once is normal.</p>`;
+    <p class="footer-note">Make it obvious. Make it easy. Make it satisfying. Never miss twice.<br>— James Clear's <i>Atomic Habits</i>, applied to your actual life.</p>`;
   return html;
 };
 function saveHabit(id){
@@ -1301,6 +1367,42 @@ function saveSettings(){
   toast('Saved.');
   go('home');
 }
+
+/* ============================================================
+   WHY THIS WORKS — the three books under the hood
+   ============================================================ */
+ROUTES.why = function(){
+  return shead('Why this works', 'This app is not made-up wellness. Three books sit underneath it — here is what each one contributes.') + `
+
+    <div class="card">
+      <h3>Atomic Habits — James Clear</h3>
+      <div class="why">Every action is a vote for the person you're becoming.</div>
+      <p class="body-txt" style="margin-top:9px">
+      The tiny versions under every habit are Clear's two-minute rule: shrink the habit until refusing it is harder than doing it.
+      The tick, the leaf, the count — that's making it satisfying. "Instead of the scroll" is habit substitution: don't fight the cue, redirect it.
+      The kept ledger is identity evidence. And missing a day is designed for: never miss twice, no drama, just return.</p>
+    </div>
+
+    <div class="card">
+      <h3>Unbreakable — Dr Vonda Wright</h3>
+      <div class="why">Muscle and bone are the organs of longevity — especially for women from midlife on.</div>
+      <p class="body-txt" style="margin-top:9px">
+      This is why Body Care is strength, stretching, mobility and balance — not step counts (your shifts already cover those).
+      One set downstairs genuinely counts: bone responds to load, muscle to consistency, and both to returning week after week.
+      Recovery is training too — legs up the wall is not slacking, it is part of the program. You are building the body that carries the next thirty years.</p>
+    </div>
+
+    <div class="card">
+      <h3>How to Have a Good Day — Caroline Webb</h3>
+      <div class="why">A good day is designed at its edges.</div>
+      <p class="body-txt" style="margin-top:9px">
+      Your top 3 priorities are Webb's morning intentions: decide what matters before the day decides for you — which is why they're chosen the night before and tickable the moment you wake.
+      The two-minute resets are her micro-breaks. Evening Close is her end-of-day bookend: capture, choose, park, sleep.
+      When-then plans ("when I get home, I change clothes before the phone") live in Habit Design.</p>
+    </div>
+
+    <p class="footer-note">Small trades, repeated, in a body kept strong, inside days with edges.<br>That is the whole method.</p>`;
+};
 
 /* ============================================================
    MY CONSTITUTION — the person being built
