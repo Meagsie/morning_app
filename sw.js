@@ -1,7 +1,7 @@
 /* The Life I'm Building — service worker.
    Precaches the app shell so it opens instantly and works with no signal;
    fonts are cached the first time they load. */
-const CACHE = 'intotheday-v6';
+const CACHE = 'intotheday-v7';
 const SHELL = [
   './',
   './index.html',

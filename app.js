@@ -184,7 +184,7 @@ const DEFAULT_HABITS = [
 const PARK_CATS = ['Tomorrow','Later this week','Money','Home','Body','Family','Creative','Work thought','Joy idea','Not urgent'];
 const CREATIVE_CATS = ['Interiors','Landscape ideas','Planting combinations','Materials','Colour','Lighting','Bathroom ideas','Storage ideas','Tile ideas','Mirror & light','Gardens to visit','Form & Foliage','Textures','Shadows','Small apartment','Courtyards'];
 const HOME_CATS = ['Bathroom','Lighting','Storage','Tiles','Mirrors','Small apartment','Kitchen / dining','Bedroom','Calm home','Repairs','Inspiration','Budget thought','Future home'];
-const JOY_CATS = ['Food','Gardens','Interiors','Art','Friends','Family','Home','Beauty','Learning','Nature','Tennis','Swimming','Solo time','Small adventures','Markets','Nurseries','Galleries','Books','Rest'];
+const JOY_CATS = ['Food','Gardens','Interiors','Art','Friends','Family','Home','Beauty','Learning','Nature','Swimming','Solo time','Small adventures','Markets','Nurseries','Galleries','Theatre','Books','Rest'];
 
 /* ---------- seed sample data (first run only) ---------- */
 function ensureSeed(){
@@ -207,10 +207,10 @@ function ensureSeed(){
     {id:uid(), text:'Warm dimmable bulb for the hallway — the white one is hostile at 10pm', cat:'Lighting', date:todayStr()}
   ]);
   if(!DB.get('joyList')) DB.set('joyList', [
-    {id:uid(), text:'Morning swim, then a proper coffee on Southbank Boulevard', cat:'Small adventures', done:false},
+    {id:uid(), text:'Saturday breakfast at South Melbourne Market — coffee and flowers', cat:'Markets', done:false},
     {id:uid(), text:'Heide — gallery and the sculpture garden', cat:'Gardens', done:false},
-    {id:uid(), text:'Early Saturday at Queen Vic Market', cat:'Markets', done:false},
-    {id:uid(), text:'Book a tennis hit', cat:'Tennis', done:false}
+    {id:uid(), text:'A quiet weekday hour at the NGV', cat:'Galleries', done:false},
+    {id:uid(), text:'See what’s on at Buxton Contemporary — ten minutes’ walk away', cat:'Art', done:false}
   ]);
   if(!DB.get('moneyData')) DB.set('moneyData', {
     upcoming:[
@@ -221,6 +221,22 @@ function ensureSeed(){
     confirms:{}, looks:[], action:''
   });
   DB.set('seeded', 1);
+}
+/* One-time fix for earlier sample data that guessed wrong:
+   right market, no phantom coffee strip, no tennis without a partner. */
+function fixSeeds(){
+  if(DB.get('seedfix1')) return;
+  let joy = DB.get('joyList', null);
+  if(joy){
+    const swap = {
+      'Early Saturday at Queen Vic Market': 'Saturday breakfast at South Melbourne Market — coffee and flowers',
+      'Morning swim, then a proper coffee on Southbank Boulevard': 'Morning swim, then breakfast at South Melbourne Market'
+    };
+    joy = joy.filter(j=>j.text!=='Book a tennis hit');
+    joy.forEach(j=>{ if(swap[j.text]) j.text = swap[j.text]; });
+    DB.set('joyList', joy);
+  }
+  DB.set('seedfix1', 1);
 }
 
 /* ---------- state ---------- */
@@ -1025,6 +1041,30 @@ function logCreative(which){
    10. JOY PLAN
    ============================================================ */
 let joyCat = null;
+/* Living sources — what's-on pages for the places that match her taste,
+   weighted to walkable-from-Southbank and the arts precinct at her door. */
+const JOY_SOURCES = [
+  {group:'At your door — the arts precinct', items:[
+    {label:'NGV — what’s on', url:'https://www.ngv.vic.gov.au/whats-on/', note:'ten minutes on foot'},
+    {label:'Buxton Contemporary', url:'https://buxtoncontemporary.com/', note:'Southbank’s quiet gallery'},
+    {label:'Arts Centre Melbourne — calendar', url:'https://www.artscentremelbourne.com.au/whats-on/event-calendar', note:'theatre, music, talks'},
+    {label:'Melbourne Recital Centre', url:'https://www.melbournerecital.com.au/whats-on', note:'an hour of music, walk home after'},
+    {label:'ACCA', url:'https://acca.melbourne/', note:'contemporary art, free'}
+  ]},
+  {group:'Gardens, markets, design', items:[
+    {label:'South Melbourne Market — what’s on', url:'https://www.southmelbournemarket.com.au/what-s-on', note:'your market'},
+    {label:'Royal Botanic Gardens', url:'https://www.rbg.vic.gov.au/', note:'sensory planting research, disguised as a walk'},
+    {label:'Heide — exhibitions', url:'https://www.heide.com.au/exhibitions/', note:'gallery + sculpture garden'},
+    {label:'MPavilion program', url:'https://mpavilion.org/', note:'design talks in a garden'},
+    {label:'Open House Melbourne', url:'https://openhousemelbourne.org/', note:'inside the city’s best buildings'}
+  ]},
+  {group:'Browse what’s on', items:[
+    {label:'What’s On Melbourne', url:'https://whatson.melbourne.vic.gov.au/', note:'the city’s official listing'},
+    {label:'Broadsheet Melbourne', url:'https://www.broadsheet.com.au/melbourne', note:'good taste, kept current'},
+    {label:'Eventbrite — arts this weekend', url:'https://www.eventbrite.com.au/d/australia--melbourne/arts--events--this-weekend/', note:'workshops, openings, classes'},
+    {label:'TryBooking — search events', url:'https://www.trybooking.com/book/search', note:'the small and local ones'}
+  ]}
+];
 ROUTES.joy = function(){
   let html = shead('Joy Plan', 'Joy does not happen by accident. This is not indulgence — it is maintenance.');
   html += `<div class="card quiet"><h3>This week I want to look forward to…</h3>
@@ -1035,6 +1075,18 @@ ROUTES.joy = function(){
   const open=S.joyList.filter(j=>!j.done), had=S.joyList.filter(j=>j.done);
   if(open.length) html += `<div class="t-label">To look forward to</div>` + open.map(j=>joyEntry(j)).join('');
   if(had.length) html += `<div class="t-label">Enjoyed</div>` + had.slice(0,8).map(j=>joyEntry(j)).join('');
+
+  // find something good — live what's-on pages, opened in the browser
+  html += `<div class="t-label">Find something good</div>
+    <p class="smallprint" style="margin:0 0 4px">These open the real what's-on pages. Found something? Come back and put it in the week above.</p>`;
+  JOY_SOURCES.forEach(g=>{
+    html += `<div class="card"><h3 style="font-size:15.5px">${esc(g.group)}</h3>
+      <div class="versions" style="margin-top:9px">` +
+      g.items.map(it=>`<a class="vrow" style="text-decoration:none" href="${esc(it.url)}" target="_blank" rel="noopener">
+        <span class="vtxt"><b style="font-weight:500;color:var(--canopy)">${esc(it.label)}</b><br><span style="font-size:12.5px;font-style:italic;color:var(--moss)">${esc(it.note)}</span></span>
+        <span class="vtag" style="min-width:auto">↗</span>
+      </a>`).join('') + `</div></div>`;
+  });
   html += `<p class="footer-note">Not everything has to be useful.</p>`;
   return html;
 };
@@ -1549,6 +1601,7 @@ function closeReset(){ document.getElementById('overlay').classList.add('hidden'
    ============================================================ */
 function init(){
   ensureSeed();
+  fixSeeds();
   loadState();
   rollover();
   document.getElementById('loading').classList.add('hidden');
