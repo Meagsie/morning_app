@@ -270,18 +270,28 @@ function loadState(){
 function saveHabits(){ DB.set('habits', S.habits); }
 
 /* ---------- day rollover ----------
-   New day: last night's plan becomes today's, the day resets gently. */
+   New day: last night's plan becomes today's, the day resets gently.
+   Hospitality shifts move around — if last night's close named a start
+   time, the whole day reshapes around it. */
 function rollover(){
   const ds = DB.get('dayState', null);
   const today = todayStr();
   if(!ds || ds.date !== today){
     const plan = DB.get('plan_tomorrow', null);
     if(plan){ DB.set('plan_today', plan); DB.del('plan_tomorrow'); }
-    S.day = {date:today, dayType:null, lowEnergy:false, morningDone:false, landed:false, closed:false, returned:false};
-    // guess workday from settings
-    const wd = new Date().toLocaleDateString('en-AU',{weekday:'short'});
-    S.day.dayType = (S.settings.workdays||[]).includes(wd) ? 'work' : 'off';
-    S.day.guessed = true;
+    S.day = {date:today, dayType:null, shiftStart:null, lowEnergy:false, morningDone:false, landed:false, closed:false, returned:false};
+    // remember when yesterday ended, so a late-close/early-start turnaround is recognised
+    S.day.prevShiftEnd = (ds && ds.shiftStart!=null) ? ds.shiftStart+8 : null;
+    if(plan && plan.shift!=null && plan.shift!==''){
+      S.day.shiftStart = plan.shift;
+      S.day.dayType = 'work';
+    } else if(plan && plan.dayOff){
+      S.day.dayType = 'off';
+    } else {
+      const wd = new Date().toLocaleDateString('en-AU',{weekday:'short'});
+      S.day.dayType = (S.settings.workdays||[]).includes(wd) ? 'work' : 'off';
+      S.day.guessed = true;
+    }
     DB.set('dayState', S.day);
   } else {
     S.day = ds;
@@ -290,6 +300,28 @@ function rollover(){
   S.planTomorrow = DB.get('plan_tomorrow', null);
 }
 function saveDay(){ DB.set('dayState', S.day); }
+
+/* ---------- shifts (no 9-to-5 here) ---------- */
+const SHIFT_CHOICES = [[9.5,'9:30'],[10,'10am'],[11,'11am'],[12,'12pm'],[14,'2pm'],[15,'3pm']];
+function fmtHour(h){
+  if(h==null) return '';
+  const hh=Math.floor(h), mm=Math.round((h-hh)*60);
+  const ap=hh>=12?'pm':'am'; const h12=((hh+11)%12)+1;
+  return h12+(mm?':'+String(mm).padStart(2,'0'):'')+ap;
+}
+function setShift(h){
+  S.day.shiftStart = (S.day.shiftStart===h) ? null : h;
+  if(S.day.shiftStart!=null) S.day.dayType='work';
+  saveDay(); render();
+}
+function shiftEnd(){ return S.day.shiftStart==null ? null : S.day.shiftStart+8; }
+/* Closed at 11pm, opening at 10am: a turnaround. The app's job on these
+   mornings is getting you moving with the smallest honest versions. */
+function isTurnaround(){
+  return S.day.prevShiftEnd!=null && S.day.prevShiftEnd>=22
+      && S.day.shiftStart!=null && S.day.shiftStart<=11.5;
+}
+function effectiveLow(){ return S.day.lowEnergy || isTurnaround(); }
 
 /* ---------- kept promises (the day's collected achievements) ----------
    Every meaningful tick anywhere in the app lands here, so there is one
@@ -381,6 +413,12 @@ ROUTES.home = function(){
       <button class="chip ${!work?'on':''}" onclick="setDayType('off')">Day off</button>
       <button class="chip ${S.day.lowEnergy?'on':''}" onclick="toggleLowEnergy()">Low energy</button>
     </div>
+    ${work?`<div class="chips" style="margin-top:8px">
+      <span class="chip tag">Shift</span>
+      ${SHIFT_CHOICES.map(c=>`<button class="chip ${S.day.shiftStart===c[0]?'on':''}" onclick="setShift(${c[0]})">${c[1]}</button>`).join('')}
+    </div>
+    ${isTurnaround()?`<p class="smallprint" style="margin-top:6px">Late finish, early start — a turnaround. Tiny versions carry today.</p>`
+      : (S.day.shiftStart!=null && S.day.shiftStart>=12 ? `<p class="smallprint" style="margin-top:6px">Shift at ${fmtHour(S.day.shiftStart)} — the morning is yours.</p>`:'')}`:''}
 
     <div class="next-card">
       <div class="nk">The next small thing</div>
@@ -409,7 +447,7 @@ ROUTES.home = function(){
       const on = loggedToday(id);
       const meta = id==='close'
         ? (on ? 'Tomorrow is held.' : 'Opens Evening Close — park it, then sleep.')
-        : (S.day.lowEnergy && h.low ? 'Low energy: '+h.low : 'Tiny version: '+h.tiny);
+        : (effectiveLow() && h.low ? 'Low energy: '+h.low : 'Tiny version: '+h.tiny);
       return `<div class="item ${on?'done':''}" onclick="homeTick(event,'${id}')">
         <div class="tick">${tickSvg()}</div>
         <div class="txt"><div class="label">${esc(h.name)}</div><div class="meta">${esc(meta)}</div></div>
@@ -452,10 +490,39 @@ ROUTES.home = function(){
 };
 
 function nextAction(){
-  const h = hourNow(), work = S.day.dayType==='work', low = S.day.lowEnergy;
+  const h = hourNow(), work = S.day.dayType==='work', low = effectiveLow();
+  const s = work ? S.day.shiftStart : null, e = work ? shiftEnd() : null;
+
+  // --- workday with a known shift: the day bends around it ---
+  if(work && s!=null){
+    if(h < s){
+      const gap = s - h;
+      if(!S.day.morningDone){
+        if(isTurnaround())
+          return {text:'Late finish, early start. Up anyway — feet on the floor.',
+                  sub:'Tiny versions only today. They still count.', route:'morning', cta:'Morning Start'};
+        return {text:'Feet on the floor. Then water.',
+                sub:'Shift at '+fmtHour(s)+". Don't give the gap to the scroll.", route:'morning', cta:'Morning Start'};
+      }
+      if(gap>=3 && !loggedToday('swim') && !low)
+        return {text:'The morning is yours until '+fmtHour(s)+'.', sub:'The pool, before the shift takes the day.', route:'move', cta:'Swim & Strength'};
+      if(gap>=2 && !low)
+        return {text:'Still '+Math.floor(gap)+' hours yours. Sketch, stretch, or one look at the money.', sub:'The gap is the life part of the day.', route:'creative', cta:'Creative Practice'};
+      return {text: low ? 'One stretch. Water. Nothing heroic.' : 'One stretch before the shift.', sub:'Then go earn. The evening is already planned for.', route:'body', cta:'Body Care'};
+    }
+    if(h < e)
+      return {text:'Two minutes: posture and breath.', sub:'Mid-shift. Release the shoulders before service takes them.', route:'body', cta:'Body Care'};
+    if(!S.day.landed)
+      return {text:'Shift done. Change clothes before the phone.', sub:'Landing is the whole job now.', route:'recover', cta:'After Work'};
+    if(!S.day.closed)
+      return {text:'Park tomorrow before bed.', sub:'Three priorities and a shift time. Then sleep.', route:'close', cta:'Evening Close'};
+    return {text:'Tomorrow is held. You are done.', sub:'Phone away from the bed, if you can.', route:'close', cta:'Review tonight'};
+  }
+
+  // --- day off, or workday without a shift set yet ---
   if(h<11 && !S.day.morningDone)
     return {text: low ? 'Sit up. That is all for now.' : 'Feet on the floor. Then water.',
-            sub:"Don't negotiate with the scroll.", route:'morning', cta:'Morning Start'};
+            sub: work ? "Set today's shift below so the day can bend around it." : "Don't negotiate with the scroll.", route:'morning', cta:'Morning Start'};
   if(h<11 && !work && !loggedToday('swim') && !low)
     return {text:'The pool is already downstairs.', sub:'Bathers on. That is the whole first step.', route:'move', cta:'Swim & Strength'};
   if(h>=11 && h<16)
@@ -548,9 +615,11 @@ function swapTick(ev, k){
 /* ---------- today's habits (front and centre on Home) ---------- */
 function todayHabitIds(){
   const work = S.day.dayType==='work';
-  return work
-    ? ['noscroll','mstretch','land','stretch','close']
-    : ['noscroll','mstretch','swim','strength','sketch','close'];
+  if(!work) return ['noscroll','mstretch','swim','strength','sketch','close'];
+  // late start = a free morning: the pool goes where the evening stretch was
+  if(S.day.shiftStart!=null && S.day.shiftStart>=12)
+    return ['noscroll','mstretch','swim','land','close'];
+  return ['noscroll','mstretch','land','stretch','close'];
 }
 function unlogHabit(id){
   const t=todayStr();
@@ -635,10 +704,15 @@ function morningFinish(){
 ROUTES.morning = function(){
   const plan=S.planToday;
   const things=(plan&&plan.things||[]).filter(t=>t&&t.trim());
-  let html = shead('Morning Start', tone({
-    soft:"No rush. Just the next small thing.",
-    direct:"Don't negotiate with the scroll.",
-    firm:"Don't negotiate with the scroll. Feet on the floor first."}));
+  let html = shead('Morning Start', isTurnaround()
+    ? 'Late finish, early start. No perfect morning required — just movement. Tiny versions carry a turnaround, and they count in full.'
+    : tone({
+      soft:"No rush. Just the next small thing.",
+      direct:"Don't negotiate with the scroll.",
+      firm:"Don't negotiate with the scroll. Feet on the floor first."}));
+  if(S.day.dayType==='work' && S.day.shiftStart!=null && !isTurnaround()){
+    html += `<p class="smallprint" style="margin-top:2px">Shift at ${fmtHour(S.day.shiftStart)} — the time before it is yours.</p>`;
+  }
 
   if(morningStep>=0 && morningStep<MORNING_SEQ.length){
     // optional guided mode — one step at a time, for the hardest mornings
@@ -842,6 +916,7 @@ ROUTES.close = function(){
     const things = (plan.things||[]).filter(t=>t&&t.trim());
     return shead('Evening Close','') + `
       <div class="mantra" style="margin-top:30px">Tomorrow is held.<br>You do not have to hold it in bed.</div>
+      ${plan.shift!=null?`<p class="sub" style="text-align:center;margin-top:8px">Tomorrow's shift: ${fmtHour(plan.shift)}${plan.shift>=12?' — the morning is yours':''}.</p>`:(plan.dayOff?'<p class="sub" style="text-align:center;margin-top:8px">Tomorrow is a day off.</p>':'')}
       ${things.length?`<div class="focus" style="margin-top:18px"><ul>${things.map((t,i)=>`<li><span>${i+1}</span>${esc(t)}</li>`).join('')}</ul></div>`:''}
       ${plan.first?`<div class="first-action" style="margin-top:14px">Tomorrow's first action: <b>${esc(plan.first)}</b></div>`:''}
       <p class="footer-note">Nothing else needs solving tonight.</p>
@@ -849,11 +924,18 @@ ROUTES.close = function(){
   }
   if(!closeData){
     const p = S.planTomorrow || {};
-    closeData = {head:p.note||'', p:(p.things||[]).slice(0,3), first:p.first||'', parked:[], easier:[]};
+    closeData = {head:p.note||'', p:(p.things||[]).slice(0,3), first:p.first||'', parked:[], easier:[], shift:(p.shift!=null?p.shift:null)};
     while(closeData.p.length<3) closeData.p.push('');
   }
   // one calm page — fill what helps, skip what doesn't
   return shead('Evening Close', 'Practical mental unloading. Fill what helps, skip the rest — one button at the end.') + `
+
+    <div class="t-label">Working tomorrow? What time?</div>
+    <p class="smallprint" style="margin:0 0 4px">Tomorrow bends around this — a 2pm start means the morning is yours.</p>
+    <div class="chips">
+      ${SHIFT_CHOICES.map(c=>`<button class="chip ${closeData.shift===c[0]?'on':''}" onclick="closeSetShift(${c[0]})">${c[1]}</button>`).join('')}
+      <button class="chip ${closeData.shift==='off'?'on':''}" onclick="closeSetShift('off')">Day off</button>
+    </div>
 
     <div class="t-label">What is still in your head?</div>
     <div class="field"><textarea id="cw_head" placeholder="Everything circling — big, small, silly. Out it goes.">${esc(closeData.head)}</textarea></div>
@@ -882,7 +964,7 @@ ROUTES.close = function(){
 };
 function closeReopen(){
   const p = S.planTomorrow || {};
-  closeData = {head:p.note||'', p:(p.things||[]).slice(0,3), first:p.first||'', parked:[], easier:[]};
+  closeData = {head:p.note||'', p:(p.things||[]).slice(0,3), first:p.first||'', parked:[], easier:[], shift:(p.dayOff?'off':(p.shift!=null?p.shift:null))};
   while(closeData.p.length<3) closeData.p.push('');
   render();
 }
@@ -909,10 +991,16 @@ function closeToggleEasier(c){
   if(i>=0) closeData.easier.splice(i,1); else closeData.easier.push(c);
   render();
 }
+function closeSetShift(v){
+  closeCollect();
+  closeData.shift = (closeData.shift===v) ? null : v;
+  render();
+}
 function closeFinish(){
   closeCollect();
-  // priorities → tomorrow's plan (rollover carries them into the morning)
-  DB.set('plan_tomorrow', {things:closeData.p, first:closeData.first, note:closeData.head});
+  // priorities + tomorrow's shift → tomorrow's plan (rollover shapes the new day)
+  const shift = (closeData.shift==='off' || closeData.shift==null) ? null : closeData.shift;
+  DB.set('plan_tomorrow', {things:closeData.p, first:closeData.first, note:closeData.head, shift:shift, dayOff:closeData.shift==='off'});
   S.planTomorrow = DB.get('plan_tomorrow');
   S.day.closed=true; saveDay();
   logHabit('close','Closed the day');
