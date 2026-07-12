@@ -169,6 +169,11 @@ table.grid td.col-today,table.grid th.col-today{background:rgba(94,120,87,.08);}
 .kept-count{text-align:center;font-family:'Fraunces',serif;font-size:16.5px;color:var(--moss);margin-top:8px;}
 .kept-count b{font-style:normal;font-size:19px;}
 .const-art{font-family:'Fraunces',serif;font-style:italic;font-size:17.5px;line-height:1.45;color:var(--canopy);}
+.doc{margin-top:4px;}
+.doc-h{font-family:'Fraunces',serif;font-weight:500;font-size:21px;color:var(--canopy);margin:24px 0 4px;letter-spacing:-.01em;}
+.doc-sub{font-size:11.5px;letter-spacing:.12em;color:var(--sage);font-weight:600;margin:17px 0 2px;}
+.doc-p{font-size:15px;color:var(--bark);line-height:1.62;margin-top:9px;}
+.doc-meta{font-size:12.5px;color:var(--sage);font-style:italic;margin-top:9px;}
 
 /* ---------- sprig ---------- */
 .sprig-wrap{display:flex;justify-content:center;margin:14px 0 4px;}

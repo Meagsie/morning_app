@@ -63,17 +63,15 @@ const IDENTITIES = [
    lists the habit ids that count as evidence toward it, so every tick
    quietly builds the identity it belongs to. */
 const DEFAULT_CONSTITUTION = [
-  {id:'mornings', text:'I protect my mornings. I get up and start the day before the phone decides it.', ev:['noscroll']},
-  {id:'body', text:'I care for my body. I move for strength and ease, never punishment.', ev:['mstretch','stretch','reset','legsup','hips','winddown','strength']},
-  {id:'water', text:'I return to the water. I use the pool that is already in my building.', ev:['swim']},
-  {id:'land', text:'I let work end. I land, recover, and protect my evenings.', ev:['land']},
-  {id:'create', text:'I notice beauty and sketch ideas before they disappear. I am building my eye.', ev:['sketch','notice','homeidea']},
-  {id:'money', text:'I look at the number. Money is information, not fear.', ev:['money','moneyweek']},
-  {id:'joy', text:'I plan joy on purpose. A life is more than its responsibilities.', ev:['joy']},
-  {id:'park', text:'I park tomorrow before bed. I do not carry it into sleep.', ev:['close','park']},
-  {id:'return', text:'I come back after a bad day. Missing once is human; returning is who I am.', ev:['returned']},
-  {id:'trust', text:'I build self-trust through small, repeated, real actions.', ev:[]}
+  {id:'better',     text:'I leave things better than I found them.', ev:['sketch','notice','homeidea']},
+  {id:'considered', text:'I have chosen a considered life over a merely secure one — and I let myself enjoy it now.', ev:['joy']},
+  {id:'sustain',    text:'I work in a way my body can sustain. Movement is for strength, not punishment.', ev:['mstretch','stretch','reset','legsup','hips','winddown','swim','strength']},
+  {id:'number',     text:'I look at the number. Money is information, not fear.', ev:['money','moneyweek']},
+  {id:'protect',    text:'I protect my mornings, and I let my evenings end.', ev:['noscroll','land','close','park']},
+  {id:'forme',      text:'I am learning to fight for myself as fiercely as I fight for others.', ev:['returned']},
+  {id:'trust',      text:'I build self-trust through small, repeated, real actions.', ev:[]}
 ];
+const OLD_CONST_IDS = 'mornings,body,water,land,create,money,joy,park,return,trust';
 function identityToday(){
   const arts = (S.constitution && S.constitution.length) ? S.constitution : null;
   const d=new Date();
@@ -244,6 +242,12 @@ function loadState(){
   S.weekly = DB.get('weekly', {});
   S.monthly = DB.get('monthly', {});
   S.constitution = DB.get('constitution', DEFAULT_CONSTITUTION.map(a=>Object.assign({},a)));
+  S.constitutionDoc = DB.get('constitutionDoc', '');
+  // upgrade untouched placeholder vows to the values-based set
+  if(S.constitution.map(a=>a.id).join(',')===OLD_CONST_IDS){
+    S.constitution = DEFAULT_CONSTITUTION.map(a=>Object.assign({},a));
+    DB.set('constitution', S.constitution);
+  }
   S.planToday = DB.get('plan_today', null);
   S.planTomorrow = DB.get('plan_tomorrow', null);
 }
@@ -1245,38 +1249,76 @@ function saveSettings(){
    MY CONSTITUTION — the person being built
    ============================================================ */
 let editArtId = null;
+let showDocEdit = false;
 function evidenceCount(a, wk){
   if(!a.ev || !a.ev.length){
-    // the "self-trust" kind of article: evidence = every kept promise this week
+    // the "self-trust" kind of vow: evidence = every kept promise this week
     return wk.reduce((s,d)=> s + DB.get('kept:'+d, []).length, 0);
   }
   return wk.reduce((s,d)=>{ const t=S.tracking[d]||{}; return s + a.ev.filter(id=>t[id]).length; }, 0);
 }
+function docSectionHtml(text){
+  const SECTIONS=['Personal Constitution','A Living Document','Preamble','Core Values','Beliefs','Principles','Identity','The Complicated Stuff','For AI Systems Reading This Document'];
+  return text.split(/\r?\n/).map(ln=>{
+    const t=ln.trim();
+    if(!t) return '';
+    if(SECTIONS.includes(t)) return `<h3 class="doc-h">${esc(t)}</h3>`;
+    if(/^Melbourne,\s*20/.test(t)) return `<p class="doc-meta">${esc(t)}</p>`;
+    if(t.length<=46 && t===t.toUpperCase() && /[A-Z]/.test(t)) return `<div class="doc-sub">${esc(t)}</div>`;
+    return `<p class="doc-p">${esc(t)}</p>`;
+  }).join('');
+}
 ROUTES.constitution = function(){
   const wk = weekDates(0);
+  const doc = S.constitutionDoc || '';
   let html = shead('My Constitution', 'The person you are becoming — in your own words. Every kept promise is a quiet vote for one of these.');
+
+  // --- the living vows (these earn evidence as you tick) ---
+  html += `<div class="t-label">Your vows</div>`;
   html += S.constitution.map(a=>{
     if(editArtId===a.id){
-      return `<div class="card"><div class="field"><textarea id="art_${a.id}" maxlength="200">${esc(a.text)}</textarea></div>
+      return `<div class="card"><div class="field"><textarea id="art_${a.id}" maxlength="220">${esc(a.text)}</textarea></div>
         <div class="btnrow"><button class="btn ghost" onclick="editArtId=null;render()">Cancel</button><button class="btn" onclick="saveArticle('${a.id}')">Save</button></div></div>`;
     }
-    const n = evidenceCount(a, wk);
-    const ev = n
-      ? ('Evidence this week &nbsp; '+'🌿'.repeat(Math.min(n,7))+(n>7?(' +'+(n-7)):''))
-      : 'No evidence yet this week — one small action counts.';
+    const hasEv = (a.ev && a.ev.length) || a.id==='trust';
+    let ev='';
+    if(hasEv){
+      const n = evidenceCount(a, wk);
+      ev = `<div class="why" style="margin-top:9px">${ n ? ('Evidence this week &nbsp; '+'🌿'.repeat(Math.min(n,7))+(n>7?(' +'+(n-7)):'')) : 'No evidence yet this week — one small action counts.'}</div>`;
+    }
     return `<div class="card">
-      <div class="const-art">${esc(a.text)}</div>
-      <div class="why" style="margin-top:9px">${ev}</div>
+      <div class="const-art">${esc(a.text)}</div>${ev}
       <div style="margin-top:10px;display:flex;gap:8px;justify-content:flex-end">
         <button class="mini" title="edit" onclick="editArtId='${a.id}';render()">&#9998;</button>
         <button class="mini" title="remove" onclick="delArticle('${a.id}')">&times;</button>
       </div>
     </div>`;
   }).join('');
-  html += `<div class="addrow"><input type="text" id="artInput" maxlength="200" placeholder="Add an article — “I am someone who…”"><button class="btn" onclick="addArticle()">Add</button></div>
-    <p class="footer-note">These are placeholders drawn from our conversation.<br>Edit them — or paste the articles from your own constitution — so this speaks in your voice.</p>`;
+  html += `<div class="addrow"><input type="text" id="artInput" maxlength="220" placeholder="Add a vow — in your own words"><button class="btn" onclick="addArticle()">Add</button></div>`;
+
+  // --- the full document (private, on-device only) ---
+  html += `<hr class="divider">`;
+  if(doc && !showDocEdit){
+    html += `<div class="t-label">The document</div>
+      <div class="doc">${docSectionHtml(doc)}</div>
+      <button class="linklike" onclick="showDocEdit=true;render()">Edit the document</button>`;
+  } else {
+    html += `<div class="t-label">The document</div>
+      <p class="sintro">Paste your constitution here. It is deeply personal, so it stays on this device only — never in the code, never uploaded.</p>
+      <div class="field"><textarea id="docInput" style="min-height:220px" placeholder="Paste the full text of your constitution…">${esc(doc)}</textarea></div>
+      <div class="btnrow">${doc?`<button class="btn ghost" onclick="showDocEdit=false;render()">Cancel</button>`:''}<button class="btn" onclick="saveDoc()">Keep it</button></div>`;
+  }
+  html += `<p class="footer-note">Your words live only on this phone.<br>Edit any vow to match your voice — those edits stay on-device too.</p>`;
   return html;
 };
+function saveDoc(){
+  const e=document.getElementById('docInput'); if(!e) return;
+  S.constitutionDoc = e.value.trim();
+  DB.set('constitutionDoc', S.constitutionDoc);
+  showDocEdit=false;
+  toast('Held. In your own words.');
+  render();
+}
 function saveArticle(id){
   const e=document.getElementById('art_'+id);
   const a=S.constitution.find(x=>x.id===id);
