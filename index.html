@@ -26,6 +26,12 @@
 </div>
 <div id="overlay" class="hidden" onclick="if(event.target===this)closeReset()"></div>
 <div id="toast"></div>
+<nav id="tabbar" class="hidden">
+  <button data-r="home" onclick="go('home')">Today</button>
+  <button data-r="morning" onclick="go('morning')">Morning</button>
+  <button data-r="close" onclick="go('close')">Evening</button>
+  <button data-r="parking" onclick="go('parking')">Park it</button>
+</nav>
 <script src="./app.js"></script>
 </body>
 </html>

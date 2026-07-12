@@ -297,9 +297,18 @@ function logHabit(id, label){
 }
 function loggedToday(id){ const t=S.tracking[todayStr()]; return !!(t && t[id]); }
 function habit(id){ return S.habits.find(h=>h.id===id); }
-function completeHabit(id, versionLabel){
+function verOn(id, vi){ const t=S.tracking[todayStr()]; return !!(t && t[id+'_v']===vi+1); }
+function markVersion(id, vi){
+  if(vi===undefined) return;
+  const t=todayStr();
+  if(!S.tracking[t]) S.tracking[t]={};
+  S.tracking[t][id+'_v']=vi+1;
+  DB.set('tracking', S.tracking);
+}
+function completeHabit(id, vi){
   const h = habit(id);
   logHabit(id, h ? h.name : 'Kept a promise');
+  markVersion(id, vi);
   toast(h ? h.done : 'That counts.');
   render();
 }
@@ -318,6 +327,11 @@ function render(){
   document.getElementById('view').innerHTML = ROUTES[r]();
   window.scrollTo(0,0);
   if(r==='home') drawSprig();
+  const tb=document.getElementById('tabbar');
+  if(tb){
+    tb.classList.remove('hidden');
+    tb.querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.r===r));
+  }
 }
 window.addEventListener('hashchange', render);
 
@@ -495,6 +509,24 @@ const MORNING_SEQ = [
   {t:'Walk to the bathroom.', s:'You only need the next action.'},
   {t:"Choose today's first anchor.", s:'One. Not the whole list.'}
 ];
+function msOn(i){ const t=S.tracking[todayStr()]; return !!(t && t['ms'+i]); }
+function toggleMs(i){
+  const t=todayStr();
+  if(!S.tracking[t]) S.tracking[t]={};
+  if(S.tracking[t]['ms'+i]) delete S.tracking[t]['ms'+i];
+  else S.tracking[t]['ms'+i]=true;
+  DB.set('tracking', S.tracking);
+  if(MORNING_SEQ.every((s,j)=>S.tracking[t]['ms'+j])) morningFinish();
+  render();
+}
+function morningFinish(){
+  if(S.day.morningDone) return;
+  S.day.morningDone=true; saveDay();
+  logHabit('noscroll','Got up without scrolling');
+  toast(tone({soft:'You are up. That is the whole victory.',
+              direct:'You moved. The morning is yours now.',
+              firm:'You moved before the phone did. That is evidence.'}));
+}
 ROUTES.morning = function(){
   const plan=S.planToday;
   const things=(plan&&plan.things||[]).filter(t=>t&&t.trim());
@@ -503,23 +535,8 @@ ROUTES.morning = function(){
     direct:"Don't negotiate with the scroll.",
     firm:"Don't negotiate with the scroll. Feet on the floor first."}));
 
-  if(morningStep===-1){
-    html += `
-      <div class="btnrow">
-        <button class="btn" onclick="morningStep=0;render()">Still in bed?</button>
-        <button class="btn ghost" onclick="morningScrolled()">I already scrolled</button>
-      </div>`;
-    if(things.length){
-      html += `<div class="t-label">Yesterday you chose what matters today</div>
-        <div class="focus"><ul>${things.map((t,i)=>`<li><span>${i+1}</span>${esc(t)}</li>`).join('')}</ul>
-        ${plan.first?`<div class="first-action">First tiny action: <b>${esc(plan.first)}</b></div>`:''}</div>`;
-    }
-    html += `<div class="t-label">The sequence, when you're ready</div><div class="list">` +
-      MORNING_SEQ.map((s,i)=>`<div class="item"><div class="tick">${tickSvg()}</div><div class="txt"><div class="label">${esc(s.t)}</div><div class="meta">${esc(s.s)}</div></div></div>`).join('') +
-      `</div>
-      <button class="btn wide" onclick="morningStep=0;render()">Walk me through it</button>
-      <p class="footer-note">Scrolled already? That's not failure — noticing is the interruption.<br>Come back to the life you're building.</p>`;
-  } else if(morningStep < MORNING_SEQ.length){
+  if(morningStep>=0 && morningStep<MORNING_SEQ.length){
+    // optional guided mode — one step at a time, for the hardest mornings
     const s = MORNING_SEQ[morningStep];
     html += `<div class="wdots">${MORNING_SEQ.map((x,i)=>`<i class="${i<=morningStep?'on':''}"></i>`).join('')}</div>
       <div class="wq">${esc(s.t)}</div><div class="whint">${esc(s.s)}</div>`;
@@ -527,29 +544,51 @@ ROUTES.morning = function(){
       html += `<div class="focus" style="margin-top:16px"><ul>${things.map((t,i)=>`<li><span>${i+1}</span>${esc(t)}</li>`).join('')}</ul></div>`;
     }
     html += `<div class="wnav">
-      ${morningStep>0?`<button class="btn ghost" onclick="morningStep--;render()">Back</button>`:''}
+      <button class="btn ghost" onclick="morningStep=-1;render()">Back to the list</button>
       <button class="btn" onclick="morningNext()">${morningStep===MORNING_SEQ.length-1?'Day started':'Done — next'}</button>
     </div>`;
+    return html;
+  }
+
+  if(things.length){
+    html += `<div class="t-label">Yesterday you chose what matters today</div>
+      <div class="focus"><ul>${things.map((t,i)=>`<li><span>${i+1}</span>${esc(t)}</li>`).join('')}</ul>
+      ${plan.first?`<div class="first-action">First tiny action: <b>${esc(plan.first)}</b></div>`:''}</div>`;
+  }
+
+  const allDone = MORNING_SEQ.every((s,i)=>msOn(i));
+  html += `<div class="t-label">Tick as you go</div><div class="list">` +
+    MORNING_SEQ.map((s,i)=>`<div class="item ${msOn(i)?'done':''}" onclick="toggleMs(${i})">
+      <div class="tick">${tickSvg()}</div>
+      <div class="txt"><div class="label">${esc(s.t)}</div><div class="meta">${esc(s.s)}</div></div>
+    </div>`).join('') + `</div>`;
+
+  if(allDone){
+    html += `<div class="mantra">${tone({
+      soft:'You are up. That is the whole victory.',
+      direct:'You moved. The morning is yours now.',
+      firm:'You moved before the phone did. That is evidence.'})}</div>`;
   } else {
-    html += `<div class="mantra" style="margin-top:40px">${tone({
-        soft:'You are up. That is the whole victory.',
-        direct:'You moved. The morning is yours now.',
-        firm:'You moved before the phone did. That is evidence.'})}</div>
-      <button class="btn wide" onclick="morningStep=-1;go('home')">Into the day</button>`;
+    html += `<div class="btnrow">
+        <button class="btn ghost" onclick="morningScrolled()">I already scrolled</button>
+        <button class="btn ghost" onclick="morningStep=0;render()">Walk me through it</button>
+      </div>
+      <p class="footer-note">Scrolled already? That's not failure — noticing is the interruption.<br>Come back to the life you're building.</p>`;
   }
   return html;
 };
 function morningNext(){
+  // guided mode also ticks the list as you go
+  const t=todayStr();
+  if(!S.tracking[t]) S.tracking[t]={};
+  S.tracking[t]['ms'+morningStep]=true;
+  DB.set('tracking', S.tracking);
   morningStep++;
-  if(morningStep>=MORNING_SEQ.length){
-    S.day.morningDone=true; saveDay();
-    logHabit('noscroll','Got up without scrolling');
-  }
+  if(morningStep>=MORNING_SEQ.length){ morningFinish(); morningStep=-1; }
   render();
 }
 function morningScrolled(){
-  toast('You noticed. That is the interruption.');
-  morningStep=0;
+  toast('You noticed. That is the interruption. Now feet on the floor.');
   render();
 }
 
@@ -584,17 +623,18 @@ function versionCard(b){
     <h3>${esc(b.name)}${logged?' 🌿':''}</h3>
     <div class="why">${esc(b.why)}</div>
     <div class="versions">
-      ${[['Full',b.full],['Tiny',b.tiny],['Low energy',b.low],['Recovery',b.recovery]].map(v=>
-        `<div class="vrow ${logged?'logged':''}" onclick="logBody('${b.id}')">
+      ${[['Full',b.full],['Tiny',b.tiny],['Low energy',b.low],['Recovery',b.recovery]].map((v,vi)=>
+        `<div class="vrow ${verOn(b.id,vi)?'logged':''}" onclick="logBody('${b.id}',${vi})">
           <span class="vtag">${v[0]}</span><span class="vtxt">${esc(v[1])}</span>
         </div>`).join('')}
     </div>
   </div>`;
 }
-function logBody(id){
+function logBody(id, vi){
   const bn=(BODY_HABITS.find(x=>x.id===id)||{}).name;
   logHabit(id, bn||'Cared for my body');
   logHabit('stretch_any');
+  markVersion(id, vi);
   const msgs = {
     mstretch:'Your body gets a say in the morning too.',
     stretch:'This is care, not punishment.',
@@ -618,9 +658,9 @@ ROUTES.move = function(){
       <h3>Swim ${swimLogged?'🌿':''}</h3>
       <div class="why">Bathers on. Towel. Lift down. That is the whole start.</div>
       <div class="versions">
-        <div class="vrow ${swimLogged?'logged':''}" onclick="completeHabit('swim')"><span class="vtag">Full</span><span class="vtxt">Go downstairs and swim.</span></div>
-        <div class="vrow ${swimLogged?'logged':''}" onclick="completeHabit('swim')"><span class="vtag">Tiny</span><span class="vtxt">Put bathers on and go downstairs.</span></div>
-        <div class="vrow ${swimLogged?'logged':''}" onclick="completeHabit('swim')"><span class="vtag">Low energy</span><span class="vtxt">Sit by the pool, walk in the water, or ten minutes in.</span></div>
+        <div class="vrow ${verOn('swim',0)?'logged':''}" onclick="completeHabit('swim',0)"><span class="vtag">Full</span><span class="vtxt">Go downstairs and swim.</span></div>
+        <div class="vrow ${verOn('swim',1)?'logged':''}" onclick="completeHabit('swim',1)"><span class="vtag">Tiny</span><span class="vtxt">Put bathers on and go downstairs.</span></div>
+        <div class="vrow ${verOn('swim',2)?'logged':''}" onclick="completeHabit('swim',2)"><span class="vtag">Low energy</span><span class="vtxt">Sit by the pool, walk in the water, or ten minutes in.</span></div>
         <div class="vrow" onclick="recoverMove('swim')"><span class="vtag">Recovery</span><span class="vtxt">Put towel and bathers where you can see them. Choose the next swim time.</span></div>
       </div>
       <p class="smallprint">What is the smallest swim that would still count? Could you just get in the water?</p>
@@ -630,9 +670,9 @@ ROUTES.move = function(){
       <h3>Strength ${strLogged?'🌿':''}</h3>
       <div class="why">One set downstairs counts. You are building muscle by returning.</div>
       <div class="versions">
-        <div class="vrow ${strLogged?'logged':''}" onclick="completeHabit('strength')"><span class="vtag">Full</span><span class="vtxt">A simple strength session in the building gym.</span></div>
-        <div class="vrow ${strLogged?'logged':''}" onclick="completeHabit('strength')"><span class="vtag">Tiny</span><span class="vtxt">Go downstairs and do one set.</span></div>
-        <div class="vrow ${strLogged?'logged':''}" onclick="completeHabit('strength')"><span class="vtag">Low energy</span><span class="vtxt">One machine, one exercise, or five minutes.</span></div>
+        <div class="vrow ${verOn('strength',0)?'logged':''}" onclick="completeHabit('strength',0)"><span class="vtag">Full</span><span class="vtxt">A simple strength session in the building gym.</span></div>
+        <div class="vrow ${verOn('strength',1)?'logged':''}" onclick="completeHabit('strength',1)"><span class="vtag">Tiny</span><span class="vtxt">Go downstairs and do one set.</span></div>
+        <div class="vrow ${verOn('strength',2)?'logged':''}" onclick="completeHabit('strength',2)"><span class="vtag">Low energy</span><span class="vtxt">One machine, one exercise, or five minutes.</span></div>
         <div class="vrow" onclick="recoverMove('strength')"><span class="vtag">Recovery</span><span class="vtxt">Put gym clothes, shoes or headphones somewhere visible.</span></div>
       </div>
       <p class="smallprint">What would make tomorrow's visit obvious? Make it too easy to refuse.</p>
@@ -692,88 +732,89 @@ function landed(){
 /* ============================================================
    6. EVENING CLOSE (wizard)
    ============================================================ */
-let closeStep = 0, closeData = null;
+let closeData = null;
 ROUTES.close = function(){
-  if(!closeData){ closeData = {head:'', p:['','',''], first:'', parked:[], easier:[]}; closeStep = 0; }
-  const steps = 5;
-  let html = shead('Evening Close', 'Practical mental unloading. Not journaling homework.');
-  html += `<div class="wdots">${Array.from({length:steps},(_,i)=>`<i class="${i<=closeStep?'on':''}"></i>`).join('')}</div>`;
-
-  if(closeStep===0){
-    html += `<div class="wq">What is still in your head?</div>
-      <div class="whint">Dump it. You do not have to solve any of it tonight.</div>
-      <div class="field"><textarea id="cw_head" placeholder="Everything circling — big, small, silly. Out it goes.">${esc(closeData.head)}</textarea></div>
-      <div class="wnav"><button class="btn" onclick="closeNext()">Captured</button></div>
-      <button class="linklike" onclick="closeStep=1;render()">Nothing circling — skip</button>`;
-  }
-  else if(closeStep===1){
-    html += `<div class="wq">What actually needs attention tomorrow?</div>
-      <div class="whint">Three is enough. This is not tomorrow's entire life.</div>
-      ${[0,1,2].map(i=>`<div class="field"><input type="text" id="cw_p${i}" maxlength="80" placeholder="${['The one that counts','Then this','And this'][i]}" value="${esc(closeData.p[i])}"></div>`).join('')}
-      <div class="wnav"><button class="btn ghost" onclick="closeBack()">Back</button><button class="btn" onclick="closeNext()">These three</button></div>`;
-  }
-  else if(closeStep===2){
-    html += `<div class="wq">What is the first tiny action tomorrow?</div>
-      <div class="whint">So the morning starts itself.</div>
-      <div class="field"><input type="text" id="cw_first" maxlength="90" placeholder="e.g. Feet on the floor. Drink water." value="${esc(closeData.first)}"></div>
-      <div class="chips">${['Feet on the floor. Drink water.','Bathers on, go downstairs.','One stretch before coffee.','Open the sketchbook.','Look at one money number.'].map(c=>
-        `<button class="chip" onclick="document.getElementById('cw_first').value='${esc(c)}'">${esc(c)}</button>`).join('')}</div>
-      <div class="wnav"><button class="btn ghost" onclick="closeBack()">Back</button><button class="btn" onclick="closeNext()">Set</button></div>`;
-  }
-  else if(closeStep===3){
-    html += `<div class="wq">Park the rest.</div>
-      <div class="whint">This belongs to tomorrow, not tonight. Captured means you can stop holding it.</div>
-      <div class="addrow"><input type="text" id="cw_park" maxlength="120" placeholder="Park it here"><button class="btn" onclick="closeAddPark()">Park</button></div>
-      ${closeData.parked.length?`<div style="margin-top:10px">${closeData.parked.map(p=>`<div class="entry"><div class="etxt">${esc(p)}</div></div>`).join('')}</div>`:''}
-      <div class="wnav"><button class="btn ghost" onclick="closeBack()">Back</button><button class="btn" onclick="closeNext()">${closeData.parked.length?'Parked':'Nothing to park'}</button></div>`;
-  }
-  else if(closeStep===4){
-    html += `<div class="wq">Make tomorrow easier.</div>
-      <div class="whint">Shape the environment tonight so the morning needs no willpower.</div>
-      <div class="chips">${['Phone away from the bed','Bathers and towel out','Gym clothes visible','Stretch mat visible','Sketchbook open on the table','Tomorrow’s clothes out','Keys and bag by the door','Bills in one place'].map(c=>
-        `<button class="chip ${closeData.easier.includes(c)?'on':''}" onclick="closeToggleEasier('${esc(c)}')">${esc(c)}</button>`).join('')}</div>
-      <div class="wnav"><button class="btn ghost" onclick="closeBack()">Back</button><button class="btn" onclick="closeFinish()">Close the day</button></div>`;
-  }
-  else {
-    const first = closeData.first || 'Feet on the floor. Drink water. Do not negotiate with the scroll.';
-    html += `<div class="mantra" style="margin-top:36px">Tomorrow is held.<br>You do not have to hold it in bed.</div>
-      <div class="first-action" style="margin-top:20px">Tomorrow's first action: <b>${esc(first)}</b></div>
+  // already closed tonight → the held state, with a way back in
+  if(S.day.closed && !closeData){
+    const plan = S.planTomorrow || {};
+    const things = (plan.things||[]).filter(t=>t&&t.trim());
+    return shead('Evening Close','') + `
+      <div class="mantra" style="margin-top:30px">Tomorrow is held.<br>You do not have to hold it in bed.</div>
+      ${things.length?`<div class="focus" style="margin-top:18px"><ul>${things.map((t,i)=>`<li><span>${i+1}</span>${esc(t)}</li>`).join('')}</ul></div>`:''}
+      ${plan.first?`<div class="first-action" style="margin-top:14px">Tomorrow's first action: <b>${esc(plan.first)}</b></div>`:''}
       <p class="footer-note">Nothing else needs solving tonight.</p>
-      <button class="btn wide" onclick="closeData=null;closeStep=0;go('home')">Goodnight</button>`;
+      <button class="linklike" onclick="closeReopen()">Adjust tonight's close</button>`;
   }
-  return html;
+  if(!closeData){
+    const p = S.planTomorrow || {};
+    closeData = {head:p.note||'', p:(p.things||[]).slice(0,3), first:p.first||'', parked:[], easier:[]};
+    while(closeData.p.length<3) closeData.p.push('');
+  }
+  // one calm page — fill what helps, skip what doesn't
+  return shead('Evening Close', 'Practical mental unloading. Fill what helps, skip the rest — one button at the end.') + `
+
+    <div class="t-label">What is still in your head?</div>
+    <div class="field"><textarea id="cw_head" placeholder="Everything circling — big, small, silly. Out it goes.">${esc(closeData.head)}</textarea></div>
+
+    <div class="t-label">Tomorrow's top 3</div>
+    <p class="smallprint" style="margin:0 0 8px">Three is enough. This is not tomorrow's entire life.</p>
+    ${[0,1,2].map(i=>`<div class="field" style="margin-top:8px"><input type="text" id="cw_p${i}" maxlength="80" placeholder="${['The one that counts','Then this','And this'][i]}" value="${esc(closeData.p[i])}"></div>`).join('')}
+
+    <div class="t-label">First tiny action</div>
+    <div class="field" style="margin-top:6px"><input type="text" id="cw_first" maxlength="90" placeholder="e.g. Feet on the floor. Drink water." value="${esc(closeData.first)}"></div>
+    <div class="chips">${['Feet on the floor. Drink water.','Bathers on, go downstairs.','One stretch before coffee.','Open the sketchbook.','Look at one money number.'].map(c=>
+      `<button class="chip" onclick="closeCollect();closeData.first='${esc(c)}';render()">${esc(c)}</button>`).join('')}</div>
+
+    <div class="t-label">Park the rest</div>
+    <p class="smallprint" style="margin:0 0 4px">Captured means you can stop holding it.</p>
+    <div class="addrow"><input type="text" id="cw_park" maxlength="120" placeholder="Park it here"><button class="btn" onclick="closeAddPark()">Park</button></div>
+    ${closeData.parked.length?`<div style="margin-top:8px">${closeData.parked.map(p=>`<div class="entry"><div class="etxt">${esc(p)}<span class="ecat">parked for tomorrow</span></div></div>`).join('')}</div>`:''}
+
+    <div class="t-label">Make tomorrow easier</div>
+    <div class="chips">${['Phone away from the bed','Bathers and towel out','Gym clothes visible','Stretch mat visible','Sketchbook open on the table','Tomorrow’s clothes out','Keys and bag by the door','Bills in one place'].map(c=>
+      `<button class="chip ${closeData.easier.includes(c)?'on':''}" onclick="closeToggleEasier('${esc(c)}')">${esc(c)}</button>`).join('')}</div>
+
+    <button class="btn wide" onclick="closeFinish()">Close the day</button>
+    <p class="footer-note">You do not have to fill all of this. One priority is a real close.</p>`;
 };
+function closeReopen(){
+  const p = S.planTomorrow || {};
+  closeData = {head:p.note||'', p:(p.things||[]).slice(0,3), first:p.first||'', parked:[], easier:[]};
+  while(closeData.p.length<3) closeData.p.push('');
+  render();
+}
 function closeCollect(){
   const g=id=>{ const e=document.getElementById(id); return e?e.value.trim():null; };
   if(g('cw_head')!==null) closeData.head=g('cw_head');
   [0,1,2].forEach(i=>{ if(g('cw_p'+i)!==null) closeData.p[i]=g('cw_p'+i); });
   if(g('cw_first')!==null) closeData.first=g('cw_first');
 }
-function closeNext(){ closeCollect(); closeStep++; render(); }
-function closeBack(){ closeCollect(); closeStep--; render(); }
 function closeAddPark(){
+  closeCollect();
   const e=document.getElementById('cw_park');
-  if(e.value.trim()){ closeData.parked.push(e.value.trim()); e.value=''; render(); }
+  const v=e.value.trim(); if(!v) return;
+  closeData.parked.push(v);
+  // straight into the parking lot — held even if you fall asleep mid-close
+  S.parking.unshift({id:uid(), text:v, cat:'Tomorrow', done:false});
+  DB.set('parking', S.parking);
+  logHabit('park','Parked a thought');
+  render();
 }
 function closeToggleEasier(c){
+  closeCollect();
   const i=closeData.easier.indexOf(c);
   if(i>=0) closeData.easier.splice(i,1); else closeData.easier.push(c);
   render();
 }
 function closeFinish(){
   closeCollect();
-  // priorities → tomorrow's plan (existing rollover carries them into the morning)
+  // priorities → tomorrow's plan (rollover carries them into the morning)
   DB.set('plan_tomorrow', {things:closeData.p, first:closeData.first, note:closeData.head});
   S.planTomorrow = DB.get('plan_tomorrow');
-  // parked items → parking lot
-  closeData.parked.forEach(t=>S.parking.unshift({id:uid(), text:t, cat:'Tomorrow', done:false}));
-  if(closeData.head && closeData.head.trim() && closeData.parked.length===0){
-    // a head-dump with nothing sorted still gets held
-  }
-  DB.set('parking', S.parking);
   S.day.closed=true; saveDay();
   logHabit('close','Closed the day');
-  closeStep=5;
+  closeData=null;
+  toast('Tomorrow is held.');
   render();
 }
 
@@ -1007,7 +1048,7 @@ function setMoneyAction(a){ S.money.action = S.money.action===a?'':a; DB.set('mo
 /* ============================================================
    12. WEEKLY RESET (wizard)
    ============================================================ */
-let wkStep=0, wkData=null;
+let wkData=null;
 const WK_QUESTIONS = [
   {id:'worked', q:'What worked this week?', hint:'Small counts. "I got in the water twice" is an answer.'},
   {id:'harder', q:'What made life harder?', hint:'Information, not judgement.'},
@@ -1019,50 +1060,56 @@ ROUTES.weekly = function(){
   const wk=weekDates(0)[0];
   const saved=S.weekly[wk];
   if(!wkData) wkData = saved ? JSON.parse(JSON.stringify(saved)) : {answers:{}, keepPark:[], plan:{anchors:['','',''], body:'', move:'', creative:'', money:'', joy:'', home:'', protect:'', easier:''}};
-  const totalSteps = WK_QUESTIONS.length + 2; // questions + parking review + plan
-  let html = shead('Weekly Reset', 'A kind look at the week — not a performance review.');
+  const p=wkData.plan;
+  const open=S.parking.filter(x=>!x.done);
 
-  // this week's grid, gently
-  html += weekGridHtml();
+  // one scrollable page — look back, sort the lot, shape the week, one save
+  return shead('Weekly Reset', 'A kind look at the week — not a performance review. Answer what helps, skip the rest.')
+    + weekGridHtml() + `
 
-  html += `<div class="wdots">${Array.from({length:totalSteps},(_,i)=>`<i class="${i<=wkStep?'on':''}"></i>`).join('')}</div>`;
+    <div class="t-label">Looking back, kindly</div>
+    ${WK_QUESTIONS.map(q=>`<div class="field"><label>${esc(q.q)}</label>
+      <input type="text" id="wk_q_${q.id}" maxlength="140" placeholder="${esc(q.hint)}" value="${esc(wkData.answers[q.id]||'')}"></div>`).join('')}
 
-  if(wkStep < WK_QUESTIONS.length){
-    const q=WK_QUESTIONS[wkStep];
-    html += `<div class="wq">${esc(q.q)}</div><div class="whint">${esc(q.hint)}</div>
-      <div class="field"><textarea id="wk_a" placeholder="A sentence is plenty">${esc(wkData.answers[q.id]||'')}</textarea></div>
-      <div class="wnav">${wkStep>0?`<button class="btn ghost" onclick="wkNav(-1)">Back</button>`:''}<button class="btn" onclick="wkNav(1)">Next</button></div>`;
-  }
-  else if(wkStep === WK_QUESTIONS.length){
-    const open=S.parking.filter(p=>!p.done);
-    html += `<div class="wq">The parking lot.</div>
-      <div class="whint">Not everything here deserves to become a task. Some things were only loud because you were tired. Tick = still matters. × = let it go.</div>`;
-    html += open.length ? open.map(p=>parkEntry(p)).join('') : '<p class="sintro" style="font-style:italic;color:var(--sage)">Empty. Nothing carried over.</p>';
-    html += `<div class="wnav"><button class="btn ghost" onclick="wkNav(-1)">Back</button><button class="btn" onclick="wkNav(1)">Sorted</button></div>`;
-  }
-  else if(wkStep === WK_QUESTIONS.length+1){
-    const p=wkData.plan;
-    html += `<div class="wq">The week, simply.</div><div class="whint">Three anchors and one gentle focus each. Attach habits to things you already do.</div>
-      <div class="field"><label>Three anchor habits</label>
-        ${[0,1,2].map(i=>`<input type="text" id="wk_an${i}" style="margin-bottom:8px" maxlength="80" placeholder="${['After I wake up, I put my feet on the floor','After I make coffee, I stretch for five minutes','After I brush my teeth, I choose tomorrow’s top 3'][i]}" value="${esc(p.anchors[i]||'')}">`).join('')}
-      </div>
-      ${[['body','Body care focus','e.g. evening stretch on work nights'],
-         ['move','Swim or strength to protect','e.g. Wednesday swim before anything else'],
-         ['creative','Creative focus','e.g. three five-minute sketches'],
-         ['money','One money action','e.g. confirm bills + check electricity'],
-         ['joy','One joy plan','e.g. Saturday morning at the market'],
-         ['home','One home idea or reset','e.g. sort the hallway light'],
-         ['protect','One thing to protect','e.g. Sunday evening — no plans'],
-         ['easier','One thing to make easier','e.g. swim bag packed and by the door']
-        ].map(f=>`<div class="field"><label>${f[1]}</label><input type="text" id="wk_${f[0]}" maxlength="90" placeholder="${esc(f[2])}" value="${esc(p[f[0]]||'')}"></div>`).join('')}
-      <div class="wnav"><button class="btn ghost" onclick="wkNav(-1)">Back</button><button class="btn" onclick="wkFinish()">Set the week</button></div>`;
-  }
-  else {
-    html += `<div class="mantra" style="margin-top:30px">The week has a shape now.<br>Hold it loosely.</div>
-      <button class="btn wide" onclick="wkStep=0;wkData=null;go('home')">Done</button>`;
-  }
-  return html;
+    <div class="t-label">The parking lot</div>
+    <p class="smallprint" style="margin:0 0 4px">Some things were only loud because you were tired. Tick = done with it. × = let it go.</p>
+    ${open.length ? open.map(x=>`<div class="entry">
+        <div class="etxt">${esc(x.text)}<span class="ecat">${esc(x.cat)}</span></div>
+        <button class="mini" onclick="wkPark('${x.id}',1)">✓</button>
+        <button class="mini" onclick="wkPark('${x.id}',0)">×</button>
+      </div>`).join('') : '<p class="sintro" style="font-style:italic;color:var(--sage)">Empty. Nothing carried over.</p>'}
+
+    <div class="t-label">The week, simply</div>
+    <div class="field"><label>Three anchor habits — attach them to things you already do</label>
+      ${[0,1,2].map(i=>`<input type="text" id="wk_an${i}" style="margin-bottom:8px" maxlength="80" placeholder="${['After I wake up, I put my feet on the floor','After I make coffee, I stretch for five minutes','After I brush my teeth, I choose tomorrow’s top 3'][i]}" value="${esc(p.anchors[i]||'')}">`).join('')}
+    </div>
+    ${[['body','Body care focus','e.g. evening stretch on work nights'],
+       ['move','Swim or strength to protect','e.g. Wednesday swim before anything else'],
+       ['creative','Creative focus','e.g. three five-minute sketches'],
+       ['money','One money action','e.g. confirm bills + check electricity'],
+       ['joy','One joy plan','e.g. Saturday morning at the market'],
+       ['home','One home idea or reset','e.g. sort the hallway light'],
+       ['protect','One thing to protect','e.g. Sunday evening — no plans'],
+       ['easier','One thing to make easier','e.g. swim bag packed and by the door']
+      ].map(f=>`<div class="field"><label>${f[1]}</label><input type="text" id="wk_${f[0]}" maxlength="90" placeholder="${esc(f[2])}" value="${esc(p[f[0]]||'')}"></div>`).join('')}
+
+    <button class="btn wide" onclick="wkFinish()">Set the week</button>
+    <p class="footer-note">Three anchors is enough. Hold the rest loosely.</p>`;
 };
+function wkCollect(){
+  WK_QUESTIONS.forEach(q=>{ const e=document.getElementById('wk_q_'+q.id); if(e) wkData.answers[q.id]=e.value.trim(); });
+  [0,1,2].forEach(i=>{ const e=document.getElementById('wk_an'+i); if(e) wkData.plan.anchors[i]=e.value.trim(); });
+  ['body','move','creative','money','joy','home','protect','easier'].forEach(f=>{
+    const e=document.getElementById('wk_'+f); if(e) wkData.plan[f]=e.value.trim();
+  });
+}
+function wkPark(id, keep){
+  wkCollect(); // don't lose typed answers when the list re-renders
+  if(keep) { const x=S.parking.find(v=>v.id===id); if(x) x.done=true; }
+  else S.parking=S.parking.filter(v=>v.id!==id);
+  DB.set('parking', S.parking);
+  render();
+}
 function weekGridHtml(){
   const dates=weekDates(0), today=todayStr();
   // second key = legacy ids from the earlier version of the app, so old ticks still show
@@ -1082,25 +1129,15 @@ function weekGridHtml(){
   h+='</tbody></table></div><p class="grid-note">Empty is rest, not a miss.</p>';
   return h;
 }
-function wkNav(dir){
-  if(wkStep<WK_QUESTIONS.length){
-    const e=document.getElementById('wk_a');
-    if(e) wkData.answers[WK_QUESTIONS[wkStep].id]=e.value.trim();
-  }
-  wkStep+=dir; render();
-}
 function wkFinish(){
-  const p=wkData.plan;
-  [0,1,2].forEach(i=>{ const e=document.getElementById('wk_an'+i); if(e) p.anchors[i]=e.value.trim(); });
-  ['body','move','creative','money','joy','home','protect','easier'].forEach(f=>{
-    const e=document.getElementById('wk_'+f); if(e) p[f]=e.value.trim();
-  });
+  wkCollect();
   const wk=weekDates(0)[0];
   S.weekly[wk]=wkData;
   DB.set('weekly',S.weekly);
   logHabit('moneyweek','Did the weekly reset');
-  wkStep=WK_QUESTIONS.length+2;
-  render();
+  wkData=null;
+  toast('The week has a shape now. Hold it loosely.');
+  go('home');
 }
 
 /* ============================================================
