@@ -85,7 +85,10 @@ body{
 .item:active{transform:scale(.988);}
 .item.done{background:var(--soft);border-color:var(--soft);}
 .tick{width:23px;height:23px;border-radius:50%;border:2px solid var(--sage);flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .3s;}
-.item.done .tick{background:var(--leaf);border-color:var(--leaf);}
+.item.done .tick{background:var(--leaf);border-color:var(--leaf);animation:tickpop .38s cubic-bezier(.34,1.56,.64,1);}
+@keyframes tickpop{0%{transform:scale(.5)}55%{transform:scale(1.3)}100%{transform:scale(1)}}
+.leafburst{position:fixed;z-index:70;pointer-events:none;font-size:20px;animation:leafup .9s ease-out forwards;}
+@keyframes leafup{0%{opacity:0;transform:translateY(4px) scale(.5) rotate(-15deg)}18%{opacity:1}100%{opacity:0;transform:translateY(-54px) scale(1.25) rotate(12deg)}}
 .tick svg{width:12px;height:12px;opacity:0;transform:scale(.4);transition:all .3s;}
 .item.done .tick svg{opacity:1;transform:scale(1);}
 .item .txt{display:flex;flex-direction:column;gap:1px;min-width:0;}
@@ -172,9 +175,12 @@ table.grid td.col-today,table.grid th.col-today{background:rgba(94,120,87,.08);}
 .cell.on .dot{background:var(--leaf);border-color:var(--leaf);opacity:1;}
 .grid-note{font-size:12.5px;color:var(--sage);font-style:italic;text-align:center;margin-top:10px;}
 
-/* kept-promises ledger + constitution */
+/* kept-promises + constitution */
 .kept-count{text-align:center;font-family:'Fraunces',serif;font-size:16.5px;color:var(--moss);margin-top:8px;}
-.kept-count b{font-style:normal;font-size:19px;}
+.kept-count b{font-style:normal;font-size:20px;color:var(--canopy);}
+.sprig-row{display:flex;align-items:center;gap:16px;margin:2px 0 12px;}
+.sprig-row #sprig{width:76px;height:97px;}
+.sprig-side{flex:1;}
 .const-art{font-family:'Fraunces',serif;font-style:italic;font-size:17.5px;line-height:1.45;color:var(--canopy);}
 .doc{margin-top:4px;}
 .doc-h{font-family:'Fraunces',serif;font-weight:500;font-size:21px;color:var(--canopy);margin:24px 0 4px;letter-spacing:-.01em;}
@@ -185,10 +191,10 @@ table.grid td.col-today,table.grid th.col-today{background:rgba(94,120,87,.08);}
 /* ---------- sprig ---------- */
 .sprig-wrap{display:flex;justify-content:center;margin:14px 0 4px;}
 #sprig{width:96px;height:122px;overflow:visible;}
-#sprig .leaf{transform-origin:center;transition:opacity .55s ease, transform .55s cubic-bezier(.34,1.56,.64,1);}
+#sprig .leaf{transform-box:fill-box;transform-origin:left center;transition:opacity .55s ease, transform .55s cubic-bezier(.34,1.56,.64,1);}
 #sprig .leaf.hide{opacity:0;transform:scale(.2);}
 #sprig .leaf.show{opacity:1;transform:scale(1);}
-#sprig .bud{transition:opacity .6s ease .1s, transform .6s cubic-bezier(.34,1.56,.64,1) .1s;transform-origin:center bottom;}
+#sprig .bud{transform-box:fill-box;transform-origin:center;transition:opacity .6s ease .1s, transform .6s cubic-bezier(.34,1.56,.64,1) .1s;}
 #sprig .bud.hide{opacity:0;transform:scale(0);}
 #sprig .bud.show{opacity:1;transform:scale(1);}
 

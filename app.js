@@ -355,9 +355,6 @@ ROUTES.home = function(){
   // --- one clear next action ---
   const next = nextAction();
 
-  // --- anchors: three quiet daily promises ---
-  const anchors = weekPlanNow().anchors;
-
   let html = `
     <div class="date">${prettyDate()}${S.day.lowEnergy?' · tired day':''}</div>
     <h1 class="greet">${g} <em>${esc(S.settings.name)}</em></h1>
@@ -378,37 +375,41 @@ ROUTES.home = function(){
       </div>
     </div>`;
 
+  // ---- today's habits: the heart of the app, tickable right here ----
+  const ids = todayHabitIds();
+  const doneN = ids.filter(id=>loggedToday(id)).length;
+  const extraKept = keptToday().filter(k=>!ids.includes(k.id)).length;
+  html += `<div class="t-label">Today's habits — votes for the life you're building</div>
+    <div class="sprig-row">
+      <div class="sprig-wrap" style="margin:0"><svg id="sprig" viewBox="0 0 120 150"></svg></div>
+      <div class="sprig-side">
+        <div class="kept-count" style="text-align:left;margin:0"><b>${doneN}</b> of ${ids.length} kept</div>
+        <p class="sub" style="margin-top:4px">Each tick grows a leaf.${extraKept?`<br>+${extraKept} more kept elsewhere today.`:''}</p>
+      </div>
+    </div>
+    <div class="list">` +
+    ids.map(id=>{
+      const h = habit(id) || {name:id, tiny:''};
+      const on = loggedToday(id);
+      const meta = id==='close'
+        ? (on ? 'Tomorrow is held.' : 'Opens Evening Close — park it, then sleep.')
+        : (S.day.lowEnergy && h.low ? 'Low energy: '+h.low : 'Tiny version: '+h.tiny);
+      return `<div class="item ${on?'done':''}" onclick="homeTick(event,'${id}')">
+        <div class="tick">${tickSvg()}</div>
+        <div class="txt"><div class="label">${esc(h.name)}</div><div class="meta">${esc(meta)}</div></div>
+      </div>`;
+    }).join('') + `</div>`;
+  if(doneN===ids.length){
+    html += `<div class="mantra">Every promise kept.<br>This is the life, being built.</div>`;
+  } else {
+    html += `<p class="grid-note">The tiny version counts. It keeps the habit alive.</p>`;
+  }
+
   if(things.length){
     html += `<div class="t-label">You already chose what matters today</div>
       <div class="focus"><ul>${things.map((t,i)=>`<li><span>${i+1}</span>${esc(t)}</li>`).join('')}</ul>
       ${plan.first?`<div class="first-action">First tiny action: <b>${esc(plan.first)}</b></div>`:''}
       </div>`;
-  } else {
-    html += `<div class="t-label">Today's focus</div>
-      <div class="focus"><ul><li class="empty">Nothing chosen yet — tonight's Evening Close will set tomorrow up. For now, just take the next small thing.</li></ul></div>`;
-  }
-
-  // anchors
-  html += `<div class="t-label">Today's anchors</div><div class="list">` +
-    anchors.map((a,i)=>{
-      const on = anchorDone(i);
-      return `<div class="item ${on?'done':''}" onclick="toggleAnchor(${i})">
-        <div class="tick">${tickSvg()}</div>
-        <div class="txt"><div class="label">${esc(a)}</div></div>
-      </div>`;
-    }).join('') + `</div>`;
-
-  // kept promises — the day's collected achievements, growing the sprig
-  const keptList = keptToday();
-  html += `<div class="sprig-wrap"><svg id="sprig" viewBox="0 0 120 150"></svg></div>`;
-  if(keptList.length){
-    html += `<p class="kept-count"><b>${keptList.length}</b> kept today · each one is evidence</p>
-      <div class="list" style="margin-top:8px">` +
-      keptList.map(k=>`<div class="item done"><div class="tick">${tickSvg()}</div><div class="txt"><div class="label">${esc(k.label)}</div></div></div>`).join('') +
-      `</div>
-      <p class="grid-note">This is how self-trust is built. Nothing here wilts.</p>`;
-  } else {
-    html += `<p class="grid-note">Tick anything today — an anchor, a stretch, a swim —<br>and it lands here as evidence, and grows the sprig.</p>`;
   }
 
   // sections hub
@@ -459,41 +460,60 @@ function nextAction(){
 function setDayType(t){ S.day.dayType=t; S.day.guessed=false; saveDay(); render(); }
 function toggleLowEnergy(){ S.day.lowEnergy=!S.day.lowEnergy; saveDay(); render(); }
 
-function weekPlanNow(){
-  const wk = weekDates(0)[0];
-  const p = S.weekly[wk] && S.weekly[wk].plan;
-  return {
-    anchors: (p && p.anchors && p.anchors.filter(a=>a&&a.trim()).length ? p.anchors.filter(a=>a&&a.trim()) :
-      ['Feet on the floor before the phone','One stretch, any time','Park tomorrow before bed']),
-    plan: p || null
-  };
+/* ---------- today's habits (front and centre on Home) ---------- */
+function todayHabitIds(){
+  const work = S.day.dayType==='work';
+  return work
+    ? ['noscroll','mstretch','land','stretch','close']
+    : ['noscroll','mstretch','swim','strength','sketch','close'];
 }
-function anchorDone(i){ const t=S.tracking[todayStr()]; return !!(t && t['anchor'+i]); }
-function toggleAnchor(i){
+function unlogHabit(id){
   const t=todayStr();
-  if(!S.tracking[t]) S.tracking[t]={};
-  const key='anchor'+i;
-  if(S.tracking[t][key]){ delete S.tracking[t][key]; unmarkKept(key); }
-  else { S.tracking[t][key]=true; markKept(key, weekPlanNow().anchors[i]||'Anchor kept'); toast(tone({soft:'Gently done.',direct:'Kept.',firm:'Small, repeated, real.'})); }
-  DB.set('tracking', S.tracking);
+  if(S.tracking[t]){ delete S.tracking[t][id]; delete S.tracking[t][id+'_v']; DB.set('tracking',S.tracking); }
+  unmarkKept(id);
+}
+function homeTick(ev, id){
+  // 'close' is a real ritual, not a checkbox — ticking it opens Evening Close
+  if(id==='close'){
+    if(loggedToday('close')) toast('Tomorrow is held.');
+    else go('close');
+    return;
+  }
+  if(loggedToday(id)){ unlogHabit(id); render(); return; }
+  const h = habit(id);
+  logHabit(id, h ? h.name : 'Kept a promise');
+  leafBurst(ev);
+  toast(h ? h.done : 'That counts.');
   render();
+}
+function leafBurst(ev){
+  if(!ev || ev.clientX===undefined) return;
+  const s=document.createElement('span');
+  s.className='leafburst'; s.textContent='🌿';
+  s.style.left=(ev.clientX-10)+'px';
+  s.style.top=(ev.clientY-16)+'px';
+  document.body.appendChild(s);
+  setTimeout(()=>s.remove(), 950);
 }
 
 function drawSprig(){
   const svg=document.getElementById('sprig'); if(!svg) return;
-  const kept=keptToday().length;
-  const n=Math.max(3, Math.min(kept+1, 8));   // always one more ghost leaf inviting the next tick
-  const doneCount=Math.min(kept, 8);
-  const allDone=kept>=8;
+  // one leaf per habit — tick it, watch it grow; keep them all and it blooms
+  const ids=todayHabitIds();
+  const n=ids.length;
+  const doneCount=ids.filter(id=>loggedToday(id)).length;
+  const allDone=doneCount===n && n>0;
   const baseX=60, baseY=145, topY=34;
   let html=`<path d="M${baseX} ${baseY} C ${baseX-10} ${baseY-40}, ${baseX+9} ${baseY-70}, ${baseX} ${topY+6}" stroke="var(--moss)" stroke-width="3.2" fill="none" stroke-linecap="round"/>`;
   for(let i=0;i<n;i++){
     const frac=(i+1)/(n+1), y=baseY-frac*(baseY-topY), side=i%2===0?1:-1, cx=baseX+side*3, grown=i<doneCount, rot=side>0?38:-38;
-    html+=`<g class="leaf ${grown?'show':'hide'}" transform="translate(${cx} ${y}) rotate(${rot})">
+    // outer g holds position (attribute transform); inner g takes the CSS
+    // grow animation — CSS transforms would otherwise override the position
+    html+=`<g transform="translate(${cx} ${y}) rotate(${rot})"><g class="leaf ${grown?'show':'hide'}">
       <path d="M0 0 C 14 -6, 30 -3, 34 4 C 28 11, 12 11, 0 0 Z" fill="${grown?'var(--leaf-bright)':'var(--sage)'}" transform="scale(${side>0?1:-1},1)"/>
-      <path d="M2 1 L 28 5" stroke="rgba(35,54,42,.25)" stroke-width="1" fill="none" transform="scale(${side>0?1:-1},1)"/></g>`;
+      <path d="M2 1 L 28 5" stroke="rgba(35,54,42,.25)" stroke-width="1" fill="none" transform="scale(${side>0?1:-1},1)"/></g></g>`;
   }
-  html+=`<g class="bud ${allDone?'show':'hide'}" transform="translate(${baseX} ${topY})"><circle r="7" fill="var(--leaf-bright)"/><circle r="3.4" fill="#EDE3B8"/></g>`;
+  html+=`<g transform="translate(${baseX} ${topY})"><g class="bud ${allDone?'show':'hide'}"><circle r="7" fill="var(--leaf-bright)"/><circle r="3.4" fill="#EDE3B8"/></g></g>`;
   svg.innerHTML=html;
 }
 
