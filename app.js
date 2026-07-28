@@ -1170,7 +1170,8 @@ const CRAWLS = [
   {text:'Eco Outdoor, Richmond — stone and outdoor furniture, Form & Foliage research', cat:'Learning'},
   {text:'Mr Kitly, Brunswick — ceramics and indoor plants above Sydney Road', cat:'Beauty'},
   {text:'Michelle Guglielmo Park, Brunswick — GLAS’s double-AILA-winner pocket park, opposite the Town Hall (pair with Mr Kitly)', cat:'Gardens'},
-  {text:'Riverfront crawl: Greenline Stage 1 → Seafarers Rest Park — new Melbourne, on foot from home', cat:'Small adventures'}
+  {text:'Riverfront crawl: Greenline Stage 1 → Seafarers Rest Park — new Melbourne, on foot from home', cat:'Small adventures'},
+  {text:'Brunswick excursion: Nightingale Village → Tinning St galleries → Guglielmo Park → Siteworks/Blak Dot → Mr Kitly → A1 Bakery → CERES nursery', cat:'Small adventures'}
 ];
 ROUTES.joy = function(){
   let html = shead('Joy Plan', 'Joy does not happen by accident. This is not indulgence — it is maintenance.');
