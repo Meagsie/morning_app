@@ -47,6 +47,21 @@ There is no point putting out a cake that isn't gorgeous — a great countertop
 cake still has to look and taste exceptional. Simple + beautiful is the target,
 every single time.
 
+## Portion size — build for how our customers actually eat
+
+We serve a lot of older women, and how a thing eats matters as much as how it
+looks. Portion and bite size are part of the design, not an afterthought.
+
+- **The yoyos are the lesson.** They looked lovely, but they were slightly too
+  large for older women to comfortably get their mouths around. A beautiful item
+  that's awkward to eat won't be reordered.
+- **Right-size to the mouth and the moment.** Individual items should be an easy,
+  dignified bite or two. Cake slices should be a comfortable, generous-but-not-
+  daunting portion — enough to feel like a treat, not so much it's a struggle.
+- **When in doubt, watch them eat it.** If people are wrestling with it, leaving
+  half, or splitting one between two, the portion is wrong — fix it before it
+  goes out again.
+
 ## What this means in practice
 
 **Good candidates** — simple, beautiful, and hold their quality on the counter
@@ -74,6 +89,7 @@ beautiful, countertop cake — week after week — is how we earn our way there.
 
 - Whole cake, out on the stand, looking generous — always.
 - Simple, but beautifully made. Never put out anything less than gorgeous.
+- Sized for how our customers eat — easy, dignified bites; no yoyo-sized mouthfuls.
 - Countertop-stable for 4–5 days minimum until sales grow.
 - Same reliable offering every week so guests can count on it.
 - No fridge-only cakes as Cake of the Week for now. No scones.
